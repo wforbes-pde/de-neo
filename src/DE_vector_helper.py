@@ -2374,18 +2374,15 @@ def perform_clustering(NP, min_value, maindex, DE_model, gen_points, i):
     
     cgp_W0 = cluster_array(gen_points, clustering_type, num_of_clusters, DE_model.d)
 
-    # fitness
+    # find best cluster fitness
 
     cluster_fitness = DE_model.analytical(cgp_W0, DE_model.d)
-
-    # find best fitness
 
     c_min_value = np.amin(cluster_fitness)
     c_index = np.where(cluster_fitness == c_min_value)
     c_index = c_index[0][0]
 
     if c_min_value < min_value:
-        #logging.info(f'gen {i} {clustering_type} {num_of_clusters} clustering min {c_min_value} max {max_value}')
         logging.info(f'gen {i} {clustering_type} {num_of_clusters} clustering min {c_min_value} min {min_value}')
         gen_points[:,maindex] = cgp_W0[:,c_index].copy()
     
@@ -2398,59 +2395,38 @@ def perform_search(NP, min_value, maindex, DE_model, gen_points,i, NP_indices, c
     local = random_uniform(gen_points, samples, NP_indices, DE_model)    
     search_fitness = DE_model.analytical(local, DE_model.d)
     
-    # determine best generation point
+    # determine best search point
 
     l_fit = np.amin(search_fitness)
     mindex = np.where(search_fitness == l_fit)
     mindex = mindex[0] # index integer
 
     if l_fit < min_value:
+        logging.info(f'gen {i} local search min {l_fit} min {min_value}')
         gen_points[:,maindex] = local[:,mindex].reshape(DE_model.d,)
 
     return gen_points, l_fit 
 
 
-def perform_svd_filter(NP,bootstrapping, X_train, y_train, min_value, maindex, DE_model,
-                        reg_flag, NN_model, n_, gen_points,i, NP_indices, current):
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
-    dgp_W0, dgp_W1, dgp_W2 = {},{},{}
-    test_errors = []
+def perform_svd_filter(NP, min_value, maindex, DE_model, gen_points,i, NP_indices, current):
+    j = 2
+    svd_points= svd_space(gen_points, j)
+    svd_fitness = DE_model.analytical(svd_points,DE_model.d)
 
-    S = 0
-    for k in NP_indices:
-        for j in [1,2]:
-            dgp_W0[S] = svd_space(xgp_W0[k], j)
-            dgp_W1[S] = svd_space(xgp_W1[k], j)
-            dgp_W2[S] = svd_space(xgp_W2[k], j)
-            S = S+1
+    # determine best svd point
 
-    for s in np.arange(0,S):
-        if bootstrapping:
-            X_train_ = X_train[s%NP]
-            y_train_ = y_train[s%NP]
-            m_ = len(y_train_)
-            svd_fit, dv = fitness(X_train_, dgp_W0[s], dgp_W1[s], dgp_W2[s], xgp_W3[s%NP], xgp_b0[s%NP], xgp_b1[s%NP], xgp_b2[s%NP], xgp_b3[s%NP],
-                            y_train_, m_, DE_model.error_metric, reg_flag, NN_model)
-        else:
-            svd_fit, dv = fitness(X_train, dgp_W0[s], dgp_W1[s], dgp_W2[s], xgp_W3[s%NP], xgp_b0[s%NP], xgp_b1[s%NP], xgp_b2[s%NP], xgp_b3[s%NP],
-                            y_train, n_, DE_model.error_metric, reg_flag, NN_model)
-        test_errors.append(svd_fit)
+    svd_fit = np.amin(svd_fitness)
+    mindex = np.where(svd_fitness == svd_fit)
+    mindex = mindex[0] # index integer
 
-        if svd_fit < min_value:
-            #logging.info(f'gen {i} svd filter {svd_value} max {max_value}')
-            logging.info(f'gen {i} svd filter {svd_fit} min {min_value}')
-            xgp_W0[s%NP] = dgp_W0[s].copy()
-            xgp_W1[s%NP] = dgp_W1[s].copy()
-            xgp_W2[s%NP] = dgp_W2[s].copy()
-            xgp_W3[s%NP] = xgp_W3[s%NP].copy()
+    if len(mindex) > 1:
+        mindex = mindex[0]
 
-            xgp_b0[s%NP] = xgp_b0[s%NP].copy()
-            xgp_b1[s%NP] = xgp_b1[s%NP].copy()
-            xgp_b2[s%NP] = xgp_b2[s%NP].copy()
-            xgp_b3[s%NP] = xgp_b3[s%NP].copy()
-            break
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
-    return gen_points, svd_fit 
+    if svd_fit < min_value:
+        logging.info(f'gen {i} svd filter min {svd_fit} min {min_value}')
+        gen_points[:,maindex] = svd_points[:,mindex].reshape(DE_model.d,)
+
+    return gen_points, svd_fit
 
 
 def perform_svd_scalar(NP,bootstrapping, X_train, y_train, min_value, maindex, DE_model,

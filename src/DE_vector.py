@@ -653,24 +653,18 @@ def differential_evolution_vector(DE_model):
         comparison_value = min_value
 
         if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_filter_r:
-            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
-            svd_points, svd_fit  = DE_model.perform_svd_filter(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
-                            reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
+            svd_points, svd_fit  = DE_model.perform_svd_filter(NP,comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
         
         # scalar SVD
 
-        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_scalar_r:
-            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
-            svd_scalar_points, s_scalar_value  = DE_model.perform_svd_filter(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
-                                    reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
+        # if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_scalar_r:
+        #     svd_scalar_points, s_scalar_value  = DE_model.perform_svd_filter(NP, comparison_value, maindex, DE_model, gen_points,i, NP_indices, current)
         
-        # exp scalar
+        # # exp scalar
 
-        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_exp_r:
-            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
-            svd_exp_points, s_exp_value  = DE_model.perform_svd_exp(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
-                                            reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
-            xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = svd_exp_points
+        # if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_exp_r:
+        #     svd_exp_points, s_exp_value  = DE_model.perform_svd_exp(NP, comparison_value, maindex, DE_model, gen_points,i, NP_indices, current)
+        #     xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = svd_exp_points
         
         # collect parameters and data
         

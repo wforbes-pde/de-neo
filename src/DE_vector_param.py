@@ -65,7 +65,7 @@ def main(argv=None):
             'error_metric': [ 'rmsle' ], # 'rmsle', 'rmse', 'r2',
             'run_enh':  [ # run_svd, run_cluster, run_local
                              # (True, True, True),
-                               (False, False, True),
+                               (True, True, True),
                              #  (False, True, True),
                             ],
                           # return_combo_list([True, False], 3),
@@ -157,7 +157,7 @@ def main(argv=None):
     output_name = '-'.join(kfc)
     output_loc = os.path.join(out_dir + os.sep + output_name + '.csv')
     #logging.critical(f'Saving to {output_loc}')
-    #full_data.to_csv(output_loc)
+    full_data.to_csv(output_loc)
     
     # slice exit generation
 
