@@ -12,10 +12,8 @@ from DE_vector_helper import DEModelClass
 from DE_vector_helper import return_refine_count
 from DE_vector import differential_evolution_vector
 from sklearn.neural_network import MLPRegressor
-from DE_vector_helper import process, post_DE, post_DE_MCMC
+from DE_vector_helper import process, post_DE
 from pandas_ods_reader import read_ods
-from collections import Counter
-import random
 
 print_master = False
 
@@ -40,7 +38,7 @@ def main(argv=None):
             'mutation_type': [ 'random', ], # random2 weekend
             'NPI': [ 4 ], # 4
             'track_len': [ 2 ], # min 2 
-            'tol': [ -1e-3, ], # -1e-3,
+            'tol': [ 0, ], # -1e-3,
             'init': [ # ('normal',10,1),
                       #('uniform',-5,10),
                       # ('halton',None,None), # weekday
@@ -50,8 +48,7 @@ def main(argv=None):
             'refine_param': [# (10,10,10,False), 
                               (10,10,10,True), 
                              # (10,10,10,True), 
-                                ], # (100,2,10) refine_gen_start, refine_current_start, refine_mod_start, refine_random
-                            # return_combo_list(ffs, 2),
+                                ], # refine_gen_start, refine_current_start, refine_mod_start, refine_random
             'F_refine': [ 'default',], # 'default', 'variable', 'weight_variable',
             'F_delta': [ 0.01 ], #
             'lowerF': [ 0.1, ], # 0.1
@@ -68,13 +65,12 @@ def main(argv=None):
                                (True, True, True),
                              #  (False, True, True),
                             ],
-                          # return_combo_list([True, False], 3),
             'exhaustive': [  (False,20,6), 
                             # (True,50,6), 
                                  ], # run_exh, current, subset
             'val_sample': [ 4, ], # bma val minimum indices
-            'd': [ 10, ], # dimension
-            'test_function': [ 'rosenbrock' ], # dimension
+            'd': [ 20, ], # dimension
+            'test_function': [ 'rosenbrock' ], # test function to find minimum of
     }
     
     a = DE_grid.values()
@@ -157,7 +153,7 @@ def main(argv=None):
     output_name = '-'.join(kfc)
     output_loc = os.path.join(out_dir + os.sep + output_name + '.csv')
     #logging.critical(f'Saving to {output_loc}')
-    full_data.to_csv(output_loc)
+    #full_data.to_csv(output_loc)
     
     # slice exit generation
 
