@@ -7,23 +7,22 @@ import logging
 from numpy import array
 import sys
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-
+from scipy.stats import qmc
+from pyDOE import lhs
 from scipy.linalg import svd
-from scipy.signal import find_peaks
-from sklearn.preprocessing import StandardScaler  
 import itertools
 
 np.random.seed(42)
 print_master = True
 
 # https://pythonhosted.org/pyDOE/randomized.html#latin-hypercube
-def lhs_init(samples_, dim, bounds):
+def lhs_init(samples, dim, bounds):
 
     # appears to be a samples of R^b
     # is this okay? 
 
-    sample = lhs(n=dim, samples=samples_)
-    pop = np.zeros((samples_, dim))
+    sample = lhs(n=dim, samples=samples)
+    pop = np.zeros((samples, dim))
     for i in range(dim):
         pop[:, i] = sample[:, i] * bounds
         #plt.plot(np.arange(0,len(pop[0,:])),pop[0,:], linewidth=0.75)
@@ -328,38 +327,6 @@ def crossover_vector(NP_indices, y, x, CR):
     return z_
 
 
-def create_crossover_vector(x_, m, n1, n2, n3, CR_W0, CR_W1, CR_W2, CR_W3, CR_b0, CR_b1, CR_b2, CR_b3):
-
-    CR = np.ones(len(x_))
-
-    # F_1 mutation vector
-
-    w0 = m*n1
-    CR[0:w0] = CR_W0
-
-    w1 = w0 + n1*n2
-    CR[w0:w1] = CR_W1
-
-    w2 = w1 + n2*n3
-    CR[w1:w2] = CR_W2
-
-    w3 = w2 + n3
-    CR[w2:w3] = CR_W3
-
-    b0 = w3 + n1
-    CR[w3:b0] = CR_b0
-
-    b1 = b0 + n2
-    CR[b0:b1] = CR_b1
-
-    b2 = b1 + n3
-    CR[b1:b2] = CR_b2
-
-    b3 = b2 + 1
-    CR[b2:b3] = CR_b3
-    
-    return CR
-
 def mutation_vector(d, NP, NP_indices, F_1, F_2, F_3, x_weight, gen_best_x_weight, mutation_type):
 
     if mutation_type == 'random':
@@ -395,177 +362,35 @@ def mutation_vector(d, NP, NP_indices, F_1, F_2, F_3, x_weight, gen_best_x_weigh
     return y
 
 
-def create_mutation_vector(x_, m, n1, n2, n3, F_one, F_two, F_three):
-
-    F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3 = F_one
-    F2_W0, F2_W1, F2_W2, F2_W3, F2_b0, F2_b1, F2_b2, F2_b3 = F_two
-    F3_W0, F3_W1, F3_W2, F3_W3, F3_b0, F3_b1, F3_b2, F3_b3 = F_three
-
-    F_1 = np.ones(len(x_))
-    F_2 = np.ones(len(x_))
-    F_3 = np.ones(len(x_))
-
-    # F_1 mutation vector
-
-    w0 = m*n1
-    F_1[0:w0] = F_W0
-
-    w1 = w0 + n1*n2
-    F_1[w0:w1] = F_W1
-
-    w2 = w1 + n2*n3
-    F_1[w1:w2] = F_W2
-
-    w3 = w2 + n3
-    F_1[w2:w3] = F_W3
-
-    b0 = w3 + n1
-    F_1[w3:b0] = F_b0
-
-    b1 = b0 + n2
-    F_1[b0:b1] = F_b1
-
-    b2 = b1 + n3
-    F_1[b1:b2] = F_b2
-
-    b3 = b2 + 1
-    F_1[b2:b3] = F_b3
-
-    # F_2 mutation vector
-
-    F_2[0:w0] = F2_W0
-    F_2[w0:w1] = F2_W1
-    F_2[w1:w2] = F2_W2
-    F_2[w2:w3] = F2_W3
-    F_2[w3:b0] = F2_b0
-    F_2[b0:b1] = F2_b1
-    F_2[b1:b2] = F2_b2
-    F_2[b2:b3] = F2_b3
-
-    # F_3 mutation vector
-
-    F_3[0:w0] = F3_W0
-    F_3[w0:w1] = F3_W1
-    F_3[w1:w2] = F3_W2
-    F_3[w2:w3] = F3_W3
-    F_3[w3:b0] = F3_b0
-    F_3[b0:b1] = F3_b1
-    F_3[b1:b2] = F3_b2
-    F_3[b2:b3] = F3_b3
-    
-    return F_1, F_2, F_3
-
-
 def generate_initial_population(d, NP, NP_indices, init):
-    
-    # bias matrix initialization based on 
-    # a number of rows, n_input
-    # b number of columns, n_output
+
     # NP number of candidates
     
-    # init values
+    # init args
     
-    itype,l,h = init
-
-    # Kaiming He weight initialization for relu
-    # loc = mean, scale = standard deviation    
+    itype,l,h = init 
 
     if itype == 'uniform':
         x =np.random.uniform(low=l, high=h, size=(d, NP))
 
-    # candidates = {}
+    # loc = mean, scale = standard deviation   
 
-    # if itype == 'latin':
-    #     bounds=1
-    #     x = lhs_init(len(NP_indices), a*b, bounds)
-    #     for j in NP_indices:
-    #         trans = x[j,:].reshape(len(x[j,:]),1)
-    #         xx = trans.reshape(a,b)
-    #         candidates[j] = xx
+    if itype == 'normal':
+        mean_ = l
+        sigma = h
+        x = np.random.normal(loc=mean_, scale=sigma, size=(d,NP))
 
-    # if itype == 'halton':
-    #     sampler = qmc.Halton(d=a*b, scramble=True)
-    #     x = sampler.random(n=len(NP_indices))
-    #     for j in NP_indices:
-    #         trans = x[j,:].reshape(len(x[j,:]),1)
-    #         xx = trans.reshape(a,b)
-    #         candidates[j] = xx
+    if itype == 'latin':
+        bounds=h
+        x = lhs_init(samples=NP, dim=d, bounds=bounds)
+        x = x.T
 
-    #     if itype == 'he':
-    #         mean_ = 0
-    #         sigma = np.sqrt(2.0) * np.sqrt(2 / (a+b))
-    #         x = np.random.normal(loc=mean_, scale=sigma, size=(a,b))
-    #     candidates[j] = x
+    if itype == 'halton':
+        sampler = qmc.Halton(d=d, scramble=True)
+        x = sampler.random(n=NP)
+        x = x.T
     
     return x
-
-# X_train, y_train,
-def selection(NP_indices, x_dict, y_dict, gen, mindex, 
-              current, reg_flag, error_metric_, 
-              W0, W1, W2, W3, b0, b1, b2, b3,
-              x_points, z_points, bootstrapping, MCMC, NN_model, DE_model):
-    
-    x_W0, x_W1, x_W2, x_W3, x_b0, x_b1, x_b2, x_b3 = x_points
-    z_W0, z_W1, z_W2, z_W3, z_b0, z_b1, z_b2, z_b3 = z_points
-    
-    # determine survival of target or trial vector 
-    # into the next generation
-    
-    if not bootstrapping:
-        n_ = len(y_dict)
-        X_train = x_dict
-        y_train = y_dict
-        
-    i_accept = 0
-
-    for j in NP_indices:
-        if bootstrapping:
-            X_train = x_dict[j]
-            y_train = y_dict[j]
-            n_ = len(y_train)
-        
-        zfit, zyb = DE_model.fitness(X_train, z_W0[j], z_W1[j], z_W2[j], z_W3[j], z_b0[j], z_b1[j], z_b2[j], z_b3[j], y_train, n_, error_metric_, reg_flag, NN_model)
-        xfit, xyb = DE_model.fitness(X_train, x_W0[j], x_W1[j], x_W2[j], x_W3[j], x_b0[j], x_b1[j], x_b2[j], x_b3[j], y_train, n_, error_metric_, reg_flag, NN_model)
-
-        if zfit <= xfit:
-            
-            x_W0[j] = z_W0[j].copy()
-            x_W1[j] = z_W1[j].copy()
-            x_W2[j] = z_W2[j].copy()
-            x_W3[j] = z_W3[j].copy()
-            x_b0[j] = z_b0[j].copy()
-            x_b1[j] = z_b1[j].copy()
-            x_b2[j] = z_b2[j].copy()
-            x_b3[j] = z_b3[j].copy()
-            i_accept = i_accept + 1 
-        
-        # MCMC acceptance
-
-        # likelihood ratio
-        # uniform random number alpha
-
-        run_mcmc = MCMC.run_mcmc
-        burn_in = MCMC.burn_in
-        ratio = np.minimum(1,xfit/zfit)
-        alpha = random.uniform(0,1)
-
-        # serial chain
-
-        if run_mcmc and not MCMC.parallel_chain and j == mindex and gen > burn_in:
-            W0, W1, W2, W3, b0, b1, b2, b3 = MCMC.serial_chain_MCMC(gen, xfit, zfit, mindex, run_mcmc, ratio, burn_in, j,
-                            MCMC, alpha, x_points, z_points, 
-                            W0, W1, W2, W3, b0, b1, b2, b3)
-            
-        if run_mcmc and MCMC.parallel_chain and gen > burn_in:
-            
-            # for each index chain
-
-            W0[j], W1[j], W2[j], W3[j], b0[j], b1[j], b2[j], b3[j] = MCMC.parallel_chain_MCMC(gen, xfit, zfit, mindex, run_mcmc, ratio, burn_in,j,
-                            MCMC, alpha, x_points, z_points, 
-                            W0[j], W1[j], W2[j], W3[j], b0[j], b1[j], b2[j], b3[j])
-    
-    selected_points = x_W0, x_W1, x_W2, x_W3, x_b0, x_b1, x_b2, x_b3
-    return selected_points, i_accept, W0, W1, W2, W3, b0, b1, b2, b3
 
 def differential_evolution_vector(DE_model, train_size_):
     
@@ -650,7 +475,7 @@ def differential_evolution_vector(DE_model, train_size_):
         if i == 0:
             logging.info(f'run {run} gen {i} initial population start {DE_model.init[0]}')
             
-            if init[0] in ['he', 'uniform', 'halton', 'latin']:
+            if init[0] in ['normal', 'uniform', 'halton', 'latin']:
 
                 ix_ = generate_initial_population(d, NP, initial_NP_indices, init)
             
@@ -762,38 +587,11 @@ def differential_evolution_vector(DE_model, train_size_):
 
         xgp, i_accept = selection_vector(d, NP_indices, DE_model, i, mindex, DE_model.error_metric, x, z)
         
-        # if not bootstrapping:
-        #     selected_points, i_accept, W0, W1, W2, W3, b0, b1, b2, b3 = selection(NP_indices, X_train, y_train,
-        #                                                 i, mindex, current, reg_flag, DE_model.error_metric, 
-        #                                                 W0, W1, W2, W3, b0, b1, b2, b3,
-        #                                                 x_points, z_points, bootstrapping, MCMC, NN_model, DE_model)
-        
-        # if bootstrapping:
-        #     selected_points, i_accept, W0, W1, W2, W3, b0, b1, b2, b3 = selection(NP_indices, x_dict, y_dict,
-        #                                                i, mindex, current, reg_flag, DE_model.error_metric, 
-        #                                                W0, W1, W2, W3, b0, b1, b2, b3,
-        #                                                x_points, z_points, bootstrapping, MCMC, NN_model, DE_model)
-        
-        #xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = selected_points
-        
         accept_list.append(i_accept)
 
         # fitness evaluation
 
         gen_fitness_values = DE_model.analytical(x,d)
-
-        
-        # for j in NP_indices:         
-        #     if bootstrapping:
-        #         X_train = x_dict[j]
-        #         y_train = y_dict[j]
-        #         m_ = len(y_train)
-        #         gen_train_score, yb = DE_model.fitness(x_dict[j], xgp_W0[j], xgp_W1[j], xgp_W2[j], xgp_W3[j], xgp_b0[j], xgp_b1[j], xgp_b2[j], xgp_b3[j], 
-        #                         y_dict[j], m_, DE_model.error_metric, reg_flag, NN_model)
-        #     else:
-        #         gen_train_score, yb = DE_model.fitness(X_train, xgp_W0[j], xgp_W1[j], xgp_W2[j], xgp_W3[j], xgp_b0[j], xgp_b1[j], xgp_b2[j], xgp_b3[j], 
-        #                     y_train, n_, DE_model.error_metric, reg_flag, NN_model)
-        #     errors.append(gen_train_score)
 
         # determine best generation point
 
@@ -810,7 +608,7 @@ def differential_evolution_vector(DE_model, train_size_):
 
         # define generation best
 
-        gb_x = xgp[mindex]
+        gb_x = xgp[:,mindex]
 
         # training residual tracking
 
@@ -818,7 +616,7 @@ def differential_evolution_vector(DE_model, train_size_):
             DE_model.return_running_avg_residual(i, min_value, gen_train_fitness_list, gen_train_resid_list, track_len)
         
         if train_residual > 0:
-            logging.info(f'run {run} gen {i} index {mindex} {error_metric} {min_value} train resid {train_residual} val resid {val_residual} current {current}')
+            logging.info(f'run {run} gen {i} index {mindex} minimum {min_value} train resid {train_residual} val resid {val_residual} current {current}')
             #breakpoint()
 
         # refinement

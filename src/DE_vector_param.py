@@ -28,13 +28,13 @@ def main(argv=None):
 
     # DE parameter exploration
 
-    e_ = 'search-8-mcmc-large-bma-val-exp4'
-    title = f'standard-error-exploration-{e_}'
+    e_ = 's'
+    title = f'rosenbrock-exploration-{e_}'
     ffs = [3,4,5] # n^3
     #ffs = [10,20,30,40]
 
     DE_grid = {'G':[ 2000, ], # 2000
-            'NP':[ 4 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
+            'NP':[ 16 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
             'F':[ 0.9, ], # 0.9, 0.7, 0.5 LARGER 0.9 SEEMS TO LEAD TO MEAN-VALUE FORECASTS!!!!!!!!!!!!!!!!!!!!
             'CR': [ 0.7 ], # 0.7
             'mutation_type': [ 'random', ], # random2 weekend
@@ -44,10 +44,10 @@ def main(argv=None):
             'train_size': [  (1,False,1,None),
                                 # (0.5, True, 1000, None), 
                            ], # 0.7 train_data_size, run_val, val_gen_min, val_metric
-            'init': [ # ('he',None,None),
+            'init': [  ('normal',10,1),
                       ('uniform',-5,10),
-                     #  ('halton',None,None), # weekday
-                      # ('latin',None,None), # weekend
+                       ('halton',None,None), # weekday
+                       ('latin',None,10), # weekend
                       #  ('skunk',None,None),
                     ], 
             'refine_param': [  (10,10,10,False), 
