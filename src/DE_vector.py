@@ -288,55 +288,22 @@ def mutate_best_three(d, NP, NP_indices, F_array, F2_array, F3_array, gen_best, 
     return p
 
 
-def selection_vector(NP_indices, DE_model, X_train, y_train, gen, mindex,
-              reg_flag, error_metric_, m, n1, n2, n3,
-              x_points, z_points, MCMC, chain_vector, NN_model):
+def selection_vector(d, NP_indices, DE_model, i, mindex, error_metric, x_points, z_points):
     
     # determine survival of target or trial vector
     # into the next generation
-    i_accept = 0
-    n_ = len(y_train)
 
-    for j in NP_indices:
+    x_points_orig = x_points.copy()
 
-        xcandidates = split_candidate(x_points[j], m, n1, n2, n3)
-        xW0, xW1, xW2, xW3, xB0, xB1, xB2, xB3 = xcandidates
+    x_gen_fitness = DE_model.analytical(x_points,d)
+    z_gen_fitness = DE_model.analytical(z_points,d)
 
-        zcandidates = split_candidate(z_points[j], m, n1, n2, n3)
-        zW0, zW1, zW2, zW3, zB0, zB1, zB2, zB3 = zcandidates
-        
-        zfit, zyb = DE_model.fitness(X_train, zW0, zW1, zW2, zW3, zB0, zB1, zB2, zB3, y_train, n_, error_metric_, reg_flag, NN_model)
-        xfit, xyb = DE_model.fitness(X_train, xW0, xW1, xW2, xW3, xB0, xB1, xB2, xB3, y_train, n_, error_metric_, reg_flag, NN_model)
+    index_lower = np.where(z_gen_fitness < x_gen_fitness)    
+    x_points[:,index_lower] = z_points[:,index_lower]
 
-        if zfit <= xfit:
-            x_points[j] = z_points[j].copy()
-            i_accept = i_accept + 1
+    i_accept = len(index_lower)
 
-        # MCMC acceptance
-
-        # likelihood ratio
-        # uniform random number alpha
-
-        run_mcmc = MCMC.run_mcmc
-        burn_in = MCMC.burn_in
-        ratio = np.minimum(1,xfit/zfit)
-        alpha = random.uniform(0,1)
-
-        # serial chain
-
-        if run_mcmc and not MCMC.parallel_chain and j == mindex and gen > burn_in:
-            chain_vector = MCMC.serial_chain_MCMC(gen, xfit, zfit, mindex, run_mcmc, ratio, burn_in, j,
-                            MCMC, alpha, x_points, z_points, chain_vector)
-            
-        # if run_mcmc and MCMC.parallel_chain and gen > burn_in:
-            
-        #     # for each index chain
-
-        #     W0[j], W1[j], W2[j], W3[j], b0[j], b1[j], b2[j], b3[j] = MCMC.parallel_chain_MCMC(gen, xfit, zfit, mindex, run_mcmc, ratio, burn_in,j,
-        #                     MCMC, alpha, x_points, z_points, 
-        #                     W0[j], W1[j], W2[j], W3[j], b0[j], b1[j], b2[j], b3[j])
-
-    return x_points, i_accept, chain_vector
+    return x_points, i_accept
 
 def crossover_vector(NP_indices, y, x, CR):
 
@@ -793,10 +760,7 @@ def differential_evolution_vector(DE_model, train_size_):
         
         # selection
 
-        xgp, i_accept, chain_vector = selection_vector(NP_indices, DE_model, X_train, y_train,
-                                                   i, mindex, reg_flag, DE_model.error_metric,
-                                                   m, n1, n2, n3,
-                                                   x, z, MCMC, chain_vector, NN_model)
+        xgp, i_accept = selection_vector(d, NP_indices, DE_model, i, mindex, DE_model.error_metric, x, z)
         
         # if not bootstrapping:
         #     selected_points, i_accept, W0, W1, W2, W3, b0, b1, b2, b3 = selection(NP_indices, X_train, y_train,
@@ -816,17 +780,8 @@ def differential_evolution_vector(DE_model, train_size_):
 
         # fitness evaluation
 
-        errors = []
+        gen_fitness_values = DE_model.analytical(x,d)
 
-        n_ = len(y_train)
-        for j in NP_indices:
-            candidates = split_candidate(x[j], m, n1, n2, n3)
-            W0, W1, W2, W3, b0, b1, b2, b3 = candidates
-
-            init_rmse, iyb = DE_model.fitness(X_train, W0, W1, W2, W3, b0, b1, b2, b3,
-                                y_train, n_, error_metric, reg_flag, NN_model)
-
-            errors.append(init_rmse)
         
         # for j in NP_indices:         
         #     if bootstrapping:
@@ -842,7 +797,7 @@ def differential_evolution_vector(DE_model, train_size_):
 
         # determine best generation point
 
-        gen_fitness_values = np.array(errors)
+        #gen_fitness_values = np.array(errors)
         min_value = np.amin(gen_fitness_values)
         mindex = np.where(gen_fitness_values == min_value)
         mindex = mindex[0][0] # index integer
@@ -926,13 +881,13 @@ def differential_evolution_vector(DE_model, train_size_):
             CR_refine = 'random'
             mutation_refine = 'random'
         
-        df = pd.DataFrame({'Run':[run], 'Generation':[i], 'F':[F], 'CR':[CR[0]], 'G':[G], 'NP':[NP], 'NPI':[NPI],'mutation_type':[DE_model.mutation_type],
+        df = pd.DataFrame({'Run':[run], 'Generation':[i], 'F':[F], 'CR':[CR_array[0,0]], 'G':[G], 'NP':[NP], 'NPI':[NPI],'mutation_type':[DE_model.mutation_type],
                         'lowerF':[lowerF], 'upperF':[upperF],'tol':[tol],'F_delta':[F_delta], 'init':[str(init)], 
                         'refine_param':[str(DE_model.refine_param)], 'F_refine':[str(F_refine)], 'mutation_refine':[str(mutation_refine)], 
                         'lowerCR':[lowerCR], 'upperCR':[upperCR], 'CR_refine':[str(CR_refine)], 'CR_delta':[CR_delta],
                         'residual':[train_residual], 'run_avg_residual':[train_run_avg_residual_rmse], 'track_len':[track_len],
-                        'return_method':[return_method], 'mutation_type_':[mutation_W0], 
-                        'error_metric':[error_metric], 'reg_flag':[reg_flag], 
+                        'return_method':[return_method], 'mutation_type_':[mutation_op], 
+                        'error_metric':[error_metric], 
                         'run_enh':[str(run_enh)], 'bootstrapping':[str(DE_model.bootstrapping)],
                         'train_size':[str(train_size_)], 'current':[current], 'i_accept':[i_accept], 
                         'TrainRMSE':[min_value],'exh':[str(DE_model.exhaustive)], 'val_sample':[val_sample], 
@@ -959,29 +914,11 @@ def differential_evolution_vector(DE_model, train_size_):
             df_list.append(df)
             break     
 
-    if run_mcmc:
-        mcmc_chain = W0, W1, W2, W3, b0, b1, b2, b3
-        
-    if not run_mcmc:    
-        mcmc_chain = None
-
     #optimum_point = xgp[mindex]
     gen_points = xgp
-    mcmc_chain = chain_vector
-
-    optimum_point = split_candidate(xgp[mindex], m, n1, n2, n3)
-
-    x_W0, x_W1, x_W2, x_W3, x_b0, x_b1, x_b2, x_b3  = {}, {}, {}, {}, {}, {}, {}, {}
-
-    for j in NP_indices:
-        candidates = split_candidate(ix_[j], m, n1, n2, n3)
-        W0, W1, W2, W3, b0, b1, b2, b3 = candidates
-        x_W0[j], x_W1[j], x_W2[j], x_W3[j], x_b0[j], x_b1[j], x_b2[j], x_b3[j] = W0, W1, W2, W3, b0, b1, b2, b3
-
-    gen_points = x_W0, x_W1, x_W2, x_W3, x_b0, x_b1, x_b2, x_b3 
+    optimum_point = xgp[:,mindex]
     val_points = gen_points
     dfs = pd.concat(df_list, sort = False)
-    dfs['AcceptanceRate'] = np.sum(dfs.Acceptance)/G
 
     blah = pd.DataFrame(dfs, columns = ['current'])
     blah = blah[blah['current'] > 0].copy()

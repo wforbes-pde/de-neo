@@ -34,7 +34,7 @@ def main(argv=None):
     #ffs = [10,20,30,40]
 
     DE_grid = {'G':[ 2000, ], # 2000
-            'NP':[ 8,8,8,8,8 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
+            'NP':[ 4 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
             'F':[ 0.9, ], # 0.9, 0.7, 0.5 LARGER 0.9 SEEMS TO LEAD TO MEAN-VALUE FORECASTS!!!!!!!!!!!!!!!!!!!!
             'CR': [ 0.7 ], # 0.7
             'mutation_type': [ 'random', ], # random2 weekend
@@ -64,11 +64,11 @@ def main(argv=None):
             'CR_delta': [0.1], # 
             'lowerCR': [ 0.1 ], # 0.1
             'upperCR': [ 0.9 ], # 0.9
-            'return_method': [ 'bma_val', ], # 'bma', 'bma_val', 'standard', 'standard_val', 'bagging', 'bumping'
+            'return_method': [ 'standard', ], # 'bma', 'bma_val', 'standard', 'standard_val', 'bagging', 'bumping'
             'error_metric': [ 'rmsle' ], # 'rmsle', 'rmse', 'r2',
             'run_enh':  [ # run_svd, run_cluster, run_local
-                              (True, True, True),
-                             #  (False, False, False),
+                             # (True, True, True),
+                               (False, False, False),
                              #  (False, True, True),
                             ],
                           # return_combo_list([True, False], 3),
@@ -79,7 +79,7 @@ def main(argv=None):
                             # (True,50,6), 
                                  ], # run_exh, current, subset
             'val_sample': [ 4, ], # bma val minimum indices
-            'd': [ 5, ], # dimension
+            'd': [ 10, ], # dimension
             'test_function': [ 'rosenbrock' ], # dimension
     }
     
@@ -152,7 +152,7 @@ def main(argv=None):
 
     full_data = pd.concat(master, sort=False)
     mdata = pd.concat(models, sort=False)
-
+    mdata = pd.DataFrame(mdata)
     # runtime
 
     time_taken = datetime.now() - start
@@ -160,7 +160,7 @@ def main(argv=None):
     
     # output full data
 
-    kfc = (f'DE-NN-{application}', 'refinement')
+    kfc = (f'rosenbrock', 'refinement')
     out_dir = r'../output'
     output_name = '-'.join(kfc)
     output_loc = os.path.join(out_dir + os.sep + output_name + '.csv')
@@ -176,15 +176,9 @@ def main(argv=None):
     key = ['G', 'NP', 'NPI', 'F', 'CR', 'mutation_type', 'tol', 
            'F_delta', 'lowerF', 'upperF', 'F_refine', 'refine_param', 
            'mutation_refine', 'lowerCR', 'upperCR', 'CR_refine', 'CR_delta', 
-           'run_mcmc', 'burn_in', 'return_method', 'track_len', 'pred_post_sample',
-           'error_metric', 'reg_flag', 'run_enh', 'regularization_', 
-           'error_dist', 'error_std', 'init', 'exh', 'val_sample',
-           'bootstrapping', 'layers', 'train_size', 'Activation', 'c'] # add neurons for 1 layer ADD BACK 'c'
-    if MCMC.run_mcmc:
-        key_cols = [f'2023_{error_metric}_MCMC_mode', '2023_RMSE_MCMC_mode', 'TestStd', '2023_RMSE_MCMC_mean']
-        #key.remove('c')
-    else:
-        key_cols = [f'2023_{error_metric}', '2023_RMSE', 'TestStd']
+           'return_method', 'track_len', 'error_metric', 'run_enh',  'init', 'exh', 'val_sample',
+           'bootstrapping', 'c'] # add neurons for 1 layer ADD BACK 'c'
+    key_cols = ['Minimum']
     
     # across each group and index c
     mdata['c'] = mdata['c'].astype(str)
@@ -199,13 +193,8 @@ def main(argv=None):
     #key2.remove('c')
     key2.append('Run')
     key_cols2 = key_cols.copy()
-    key_cols2.remove('TestStd') # add this?
     perf_m2 = mdata.groupby(key2)[key_cols2].aggregate(['mean','count', 'min'])
     perf_m2 = perf_m2.reset_index(drop=False)
-
-    discard = ['F_W0', 'F_W1', 'F_W2', 'F_W3', 'F_b0', 'F_b1', 'F_b2', 'F_b3',
-                        'F2_W0', 'F2_W1', 'F2_W2', 'F2_W3', 'F2_b0', 'F2_b1', 'F2_b2','F2_b3']
-    mdata = mdata[mdata.columns[~mdata.columns.isin(discard )]]
 
     # merge columns
 
@@ -218,19 +207,13 @@ def main(argv=None):
 
     # group minimum
 
-    if MCMC.run_mcmc:
-        perf_m['2023_RMSE_MCMC_mode_mean'] = pd.to_numeric(perf_m['2023_RMSE_MCMC_mode_mean'])
-        cols = ['NP_', 'G_', 'error_metric_', ]
-        test = perf_m.loc[perf_m.groupby(cols)['2023_RMSE_MCMC_mode_mean'].idxmin()]
-
-    if not MCMC.run_mcmc:
-        perf_m['2023_RMSE_mean'] = pd.to_numeric(perf_m['2023_RMSE_mean'])
-        cols = ['NP_', 'G_', 'error_metric_',]
-        test = perf_m.loc[perf_m.groupby(cols)['2023_RMSE_mean'].idxmin()]
+    perf_m['Minimum_mean'] = pd.to_numeric(perf_m['Minimum_mean'])
+    cols = ['NP_', 'G_', 'error_metric_',]
+    test = perf_m.loc[perf_m.groupby(cols)['Minimum_mean'].idxmin()]
 
     # output summary data
 
-    kfc = (f'DE-NN-{application}', 'summary', f'{title}', f'{daytype}') 
+    kfc = (f'rosenbrock', 'summary', f'{title}') 
     out_dir = r'../output'
     output_name = '-'.join(kfc)
     output_loc = os.path.join(out_dir + os.sep + output_name + '.ods')

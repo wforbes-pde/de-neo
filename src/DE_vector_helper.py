@@ -45,24 +45,6 @@ import seaborn as sn
 
 np.random.seed(42)
 
-# from ctypes import *
-
-# so_file = "./c_error_metric.so"
-# c_error_metric = CDLL(so_file)
-# from numpy.ctypeslib import ndpointer
-
-# c_error_metric.rae_loss.argtypes = [ndpointer(c_double), ndpointer(c_double), c_int]
-# c_error_metric.rae_loss.restype = c_double
-
-# c_error_metric.rse_loss.argtypes = [ndpointer(c_double), ndpointer(c_double), c_int]
-# c_error_metric.rse_loss.restype = c_double
-
-# c_error_metric.rrmse_loss.argtypes = [ndpointer(c_double), ndpointer(c_double), c_int]
-# c_error_metric.rrmse_loss.restype = c_double
-
-# c_error_metric.lcosh_loss.argtypes = [ndpointer(c_double), ndpointer(c_double), c_int]
-# c_error_metric.lcosh_loss.restype = c_double
-
 class DEModelClass():
     
     def __init__(self, NP, g, F, CR, mutation_type, tol, NPI, init, track_length,
@@ -3904,28 +3886,16 @@ def return_refine_count(df):
     final = df.groupby(['Run', 'NP'])[cols].sum()
     return final
 
-def return_standard(return_method, dfs, optimum_point, x_2023, NN_model, MCMC, test_data,
-                    Data, error_metric,models, application, daytype, print_master, DE_model):
+def return_standard(return_method, dfs, optimum_point, error_metric,models, print_master, DE_model):
     logging.info(f'starting {return_method}')
     top = [1]
     data = dfs[dfs['Exit'] == 'True'].copy()
-    gb_W0, gb_W1, gb_W2, gb_W3, gb_b0, gb_b1, gb_b2, gb_b3 = optimum_point
-
-    y_2023_pred = DE_model.DENN_forecast(x_2023, gb_W0, gb_W1, gb_W2, gb_W3, gb_b0, gb_b1, gb_b2, gb_b3, NN_model, MCMC)
-    denn_rmse_2023 = root_mean_squared_error(test_data[Data.target], y_2023_pred)
-    weights=None
-    denn_2023_score = return_error_metric(test_data[Data.target], y_2023_pred, error_metric, weights)
+    optimum_point = optimum_point.reshape(len(optimum_point),1)
+    xgen_fitness = DE_model.analytical(optimum_point,DE_model.d)
     data['c'] = 1
-    data[f'2023_{error_metric}'] = denn_2023_score
-    data['2023_RMSE'] = denn_rmse_2023
-    data['TestStd'] = np.std(y_2023_pred,axis=0)[0]
+    data['Minimum'] = xgen_fitness
+    data['Point'] = [optimum_point.T]
     models.append(data)
-
-    if print_master:
-        xcol = 'datetime'
-        label = f'DE-NN Predicted-{return_method}-{error_metric}-{application}'
-        file_ext = f'houston-{application}-{daytype}-denn-test-{DE_model.run}.png'
-        DE_model.plot(test_data[xcol], Data.target, test_data[Data.target], y_2023_pred, label, file_ext)
 
     return models, data
 
@@ -4483,7 +4453,7 @@ def perform_svd_log(NP,bootstrapping, X_train, y_train, min_value, maindex, DE_m
 
 def post_DE(post_de_args, de_output):
     optimum_point, gen_points, val_points, dfs = de_output
-    application, error_metric, models, DE_model, NP_indices, return_method, print_master, NP, DE_model = post_de_args
+    error_metric, models,DE_model, NP_indices, return_method, print_master, NP, DE_model = post_de_args
     #name = 'DE'
     #success = write_weights( W0_, W1_, W2_, W3_, b0_, b1_, b2_, b3_,run)
 
@@ -4504,8 +4474,7 @@ def post_DE(post_de_args, de_output):
     # it looks like standard with bootstrapping=True is bumping
 
     if DE_model.return_method in ['standard', 'standard_val']:
-        models, data = return_standard(return_method, dfs, optimum_point, x_2023, NN_model, MCMC, test_data,
-                                        Data, error_metric,models, application, daytype, print_master, DE_model)
+        models, data = return_standard(return_method, dfs, optimum_point, error_metric,models, print_master, DE_model)
     
     # it looks like standard with bootstrapping=True is bumping
     # when return_method == 'bumping', bootstrapping=True.
