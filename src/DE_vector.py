@@ -31,29 +31,54 @@ def lhs_init(samples_, dim, bounds):
         #a=False
     return pop
 
-def generate_noise(b,c,MCMC):
 
-    run_mcmc = MCMC.run_mcmc
-    error_dist = MCMC.error_dist
-    error_std = MCMC.error_std
-
-    if run_mcmc and error_dist == 'norm':
-        w = np.random.normal(loc=0, scale=error_std, size=(b,c))
-
-    if run_mcmc and error_dist == 'unif':
-        w = np.random.uniform(low= -error_std, high= error_std , size=(b,c))
-
-    if not run_mcmc:
-        w = np.zeros((b,c))
-    return w
-
-def mutate_two(NP, NP_indices, F, F2, x, MCMC):
-    
-    # mcmc noise addition
-
-    b,c = x[0].shape
+def mutate(d, NP, NP_indices, F_array, x):
 
     # random mutation with distinct indices
+    
+    # create base vector array
+
+    base_array = np.full((d, NP), 1.0)
+    v2_array = np.full((d, NP), 1.0)
+    v1_array = np.full((d, NP), 1.0)
+
+    # random mutation with distinct indices
+
+    indices = list(np.arange(0,NP))
+    test=[]
+
+    for j in NP_indices:
+        indices.remove(j)
+        a = np.random.choice(indices, 3, replace=False)
+        a = list(a)
+        test.append(a)
+        indices = list(np.arange(0,NP))
+
+    for e in NP_indices:
+        i = test[e][0]
+        j = test[e][1]
+        k = test[e][2]
+        base = x[:,i].copy()
+        base_array[:,e] = base
+        v1 = x[:,j].copy()
+        v1_array[:,e] = v1
+        v2 = x[:,k].copy()
+        v2_array[:,e] = v2
+
+    p = base_array + F_array*(v2_array-v1_array)
+    return p
+
+def mutate_two(d,NP, NP_indices, F_array, F2_array, x):
+
+    # random mutation with distinct indices
+
+    # create base vector array
+
+    base_array = np.full((d, NP), 1.0)
+    v2_array = np.full((d, NP), 1.0)
+    v1_array = np.full((d, NP), 1.0)
+    v3_array = np.full((d, NP), 1.0)
+    v4_array = np.full((d, NP), 1.0)
     
     indices = list(np.arange(0,NP))
     test=[]
@@ -65,7 +90,49 @@ def mutate_two(NP, NP_indices, F, F2, x, MCMC):
         test.append(a)
         indices = list(np.arange(0,NP))
 
-    y = x.copy()
+    for e in NP_indices:
+        i = test[e][0]
+        j = test[e][1]
+        k = test[e][2]
+        l = test[e][3]
+        m = test[e][4]
+        base = x[:,i].copy()
+        base_array[:,e] = base
+        v1 = x[:,j].copy()
+        v1_array[:,e] = v1
+        v2 = x[:,k].copy()
+        v2_array[:,e] = v2
+        v3 = x[:,l].copy()
+        v3_array[:,e] = v3
+        v4 = x[:,m].copy()
+        v4_array[:,e] = v4           
+        
+    p = base_array + F_array*(v2_array-v1_array) + F2_array*(v4_array-v3_array)
+    return p
+
+def mutate_three(d, NP, NP_indices, F_array, F2_array, F3_array, x):
+
+    # random mutation with distinct indices
+
+    # create base vector array
+
+    base_array = np.full((d, NP), 1.0)
+    v2_array = np.full((d, NP), 1.0)
+    v1_array = np.full((d, NP), 1.0)
+    v3_array = np.full((d, NP), 1.0)
+    v4_array = np.full((d, NP), 1.0)
+    v5_array = np.full((d, NP), 1.0)
+    v6_array = np.full((d, NP), 1.0)
+    
+    indices = list(np.arange(0,NP))
+    test=[]
+
+    for j in NP_indices:
+        indices.remove(j)
+        a = np.random.choice(indices, 5, replace=False)
+        a = list(a)
+        test.append(a)
+        indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         i = test[e][0]
@@ -73,215 +140,39 @@ def mutate_two(NP, NP_indices, F, F2, x, MCMC):
         k = test[e][2]
         l = test[e][3]
         m = test[e][4]
-        base = x[i]
-        v1 = x[j]
-        v2 = x[k]
-        v3 = x[l]
-        v4 = x[m]
-        p = base + F*(v2-v1) + F2*(v4-v3) + generate_noise(b,c,MCMC)
-        #p = base + F.dot(v2-v1) + F2.dot(v4-v3) + generate_noise(b,c,MCMC)
-        y[e] = p
-
-    return y
-
-def mutate_best_two(NP, NP_indices, F, F2, gen_best, x, MCMC):
-    
-    # mcmc noise addition
-
-    b,c = x[0].shape
-
-    # random mutation with distinct indices
-    
-    indices = list(np.arange(0,NP))
-    test=[]
-
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 4, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
-
-    y = x.copy()
-
-    for e in NP_indices:
-        j = test[e][0]
-        k = test[e][1]
-        l = test[e][2]
-        m = test[e][3]
-        base = gen_best
-        v1 = x[j]
-        v2 = x[k]
-        v3 = x[l]
-        v4 = x[m]
-        p = base + F*(v2-v1) + F2*(v4-v3) + generate_noise(b,c,MCMC)
-        #p = base + F.dot(v2-v1) + F2.dot(v4-v3) + generate_noise(b,c,MCMC)
-        y[e] = p
-
-    return y
-
-
-def mutate_three(NP, NP_indices, F, F2, F3, x, MCMC):
-    
-    # mcmc noise addition
-
-    b,c = x[0].shape
-
-    # random mutation with distinct indices
-    
-    indices = list(np.arange(0,NP))
-    test=[]
-
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 7, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
-
-    y = x.copy()
-
-    for e in NP_indices:
-        i = test[e][0]
-        j = test[e][1]
-        k = test[e][2]
-        l = test[e][3]
-        m = test[e][4]
-        n = test[e][5]
-        o = test[e][6]
-        base = x[i]
-        v1 = x[j]
-        v2 = x[k]
-        v3 = x[l]
-        v4 = x[m]
-        v5 = x[n]
-        v6 = x[o]
-        p = base + F*(v2-v1) + F2*(v4-v3) + F3*(v5-v6) + generate_noise(b,c,MCMC)
-        #p = base + F.dot(v2-v1) + F2.dot(v4-v3) + F3.dot(v5-v6) + generate_noise(b,c,MCMC)
-        y[e] = p
-
-    return y
-
-def mutate_best_two(NP, NP_indices, F, F2, gen_best, x, MCMC):
-    
-    # mcmc noise addition
-
-    b,c = x[0].shape
-
-    # random mutation with distinct indices
-    
-    indices = list(np.arange(0,NP))
-    test=[]
-
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 4, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
-
-    y = x.copy()
-
-    for e in NP_indices:
-        j = test[e][0]
-        k = test[e][1]
-        l = test[e][2]
-        m = test[e][3]
-        base = gen_best
-        v1 = x[j]
-        v2 = x[k]
-        v3 = x[l]
-        v4 = x[m]
-        p = base + F*(v2-v1) + F2*(v4-v3) + generate_noise(b,c,MCMC)
-        #p = base + F.dot(v2-v1) + F2.dot(v4-v3) + generate_noise(b,c,MCMC)
-        y[e] = p
-
-    return y
-
-
-def mutate_best(NP, NP_indices, F, gen_best, x, MCMC):
-    
-    # mcmc noise addition
-
-    b,c = x[0].shape
-
-    # best mutation with distinct indices for each index
-    
-    indices = list(np.arange(0,NP))
-    test=[]
-
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 2, replace=False)
-        a = list(a)
-        a.insert(0, j )
-        test.append(a)
-        indices = list(np.arange(0,NP))
-
-    y = x.copy()
-
-    for e in NP_indices:
-        i = test[e][0]
-        j = test[e][1]
-        k = test[e][2]
-        base = gen_best.copy()
-        v1 = x[j].copy()
-        v2 = x[k].copy()
-        p = base + F*(v2-v1) + generate_noise(b,c,MCMC)
-        #p = base + F.dot(v2-v1) + generate_noise(b,c,MCMC)
-        y[e] = p
-
-    return y
-
-def mutate_best_three(NP, NP_indices, F, F2, F3, gen_best, x, MCMC):
-    
-    # mcmc noise addition
-
-    b,c = x[0].shape
-
-    # random mutation with distinct indices
-    
-    indices = list(np.arange(0,NP))
-    test=[]
-
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 6, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
-
-    y = x.copy()
-
-    for e in NP_indices:
-        j = test[e][0]
-        k = test[e][1]
-        l = test[e][2]
-        m = test[e][3]
         n = test[e][4]
         o = test[e][5]
-        base = gen_best
-        v1 = x[j]
-        v2 = x[k]
-        v3 = x[l]
-        v4 = x[m]
-        v5 = x[n]
-        v6 = x[o]
-        p = base + F*(v2-v1) + F2*(v4-v3) + F3*(v6-v5) + generate_noise(b,c,MCMC)
-        #p = base + F.dot(v2-v1) + F2.dot(v4-v3) + F3.dot(v6-v5) + generate_noise(b,c,MCMC)
-        y[e] = p
+        base = x[:,i].copy()
+        base_array[:,e] = base
+        v1 = x[:,j].copy()
+        v1_array[:,e] = v1
+        v2 = x[:,k].copy()
+        v2_array[:,e] = v2
+        v3 = x[:,l].copy()
+        v3_array[:,e] = v3
+        v4 = x[:,m].copy()
+        v4_array[:,e] = v4        
+        v5 = x[:,n].copy()
+        v5_array[:,e] = v5
+        v6 = x[:,o].copy()
+        v6_array[:,e] = v6        
 
-    return y
+    p = base_array + F_array*(v2_array-v1_array) + F2_array*(v4_array-v3_array) + F3_array*(v5_array-v6_array)
+    return p
 
 
-def mutate(NP, NP_indices, F, x, MCMC):
+def mutate_best(d, NP, NP_indices, F_array, gen_best, x):
 
-    # mcmc noise addition
+    # best mutation with distinct indices for each index
 
-    b,c = x[0].shape
+    # create base vector array
+
+    base_array = np.full((d, NP), 1.0)
+    v2_array = np.full((d, NP), 1.0)
+    v1_array = np.full((d, NP), 1.0)
 
     # random mutation with distinct indices
-    
+
     indices = list(np.arange(0,NP))
     test=[]
 
@@ -292,31 +183,110 @@ def mutate(NP, NP_indices, F, x, MCMC):
         test.append(a)
         indices = list(np.arange(0,NP))
 
-    y = x.copy()
+    for e in NP_indices:
+        i = test[e][0]
+        j = test[e][1]
+        k = test[e][2]
+        base_array[:,e] = gen_best
+        v1 = x[:,j].copy()
+        v1_array[:,e] = v1
+        v2 = x[:,k].copy()
+        v2_array[:,e] = v2
+
+    p = base_array + F_array*(v2_array-v1_array)
+    return p
+
+def mutate_best_two(d, NP, NP_indices, F_array, F2_array, gen_best, x):
+
+    # best mutation with distinct indices for each index
+    
+    # create base vector array
+
+    base_array = np.full((d, NP), 1.0)
+    v2_array = np.full((d, NP), 1.0)
+    v1_array = np.full((d, NP), 1.0)
+    v3_array = np.full((d, NP), 1.0)
+    v4_array = np.full((d, NP), 1.0)
+    
+    indices = list(np.arange(0,NP))
+    test=[]
+
+    for j in NP_indices:
+        indices.remove(j)
+        a = np.random.choice(indices, 5, replace=False)
+        a = list(a)
+        test.append(a)
+        indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         i = test[e][0]
         j = test[e][1]
         k = test[e][2]
-        base = x[i].copy() 
-        v1 = x[j].copy() 
-        v2 = x[k].copy() 
-        p = base + F*(v2-v1) + generate_noise(b,c,MCMC)
-        #p = base + F.dot(v2-v1) + generate_noise(b,c,MCMC)
-        y[e] = p
+        l = test[e][3]
+        m = test[e][4]
+        base = x[:,i].copy()
+        base_array[:,e] = base
+        v1 = x[:,j].copy()
+        v1_array[:,e] = v1
+        v2 = x[:,k].copy()
+        v2_array[:,e] = v2
+        v3 = x[:,l].copy()
+        v3_array[:,e] = v3
+        v4 = x[:,m].copy()
+        v4_array[:,e] = v4           
+        
+    p = base_array + F_array*(v2_array-v1_array) + F2_array*(v4_array-v3_array)
+    return p
 
-    return y
+def mutate_best_three(d, NP, NP_indices, F_array, F2_array, F3_array, gen_best, x):
 
-def setup_mcmc_array(m,n,n1,n2,n3,NP, MCMC):
+    # best mutation with distinct indices
+    
+    # create base vector array
 
-    if MCMC.parallel_chain:
-        W0 = {}
+    base_array = np.full((d, NP), 1.0)
+    v2_array = np.full((d, NP), 1.0)
+    v1_array = np.full((d, NP), 1.0)
+    v3_array = np.full((d, NP), 1.0)
+    v4_array = np.full((d, NP), 1.0)
+    v5_array = np.full((d, NP), 1.0)
+    v6_array = np.full((d, NP), 1.0)
+    
+    indices = list(np.arange(0,NP))
+    test=[]
 
-        for c in np.arange(0,NP):
-            W0[c] = []
-    else:
-        W0 = []
-    return W0
+    for j in NP_indices:
+        indices.remove(j)
+        a = np.random.choice(indices, 5, replace=False)
+        a = list(a)
+        test.append(a)
+        indices = list(np.arange(0,NP))
+
+    for e in NP_indices:
+        i = test[e][0]
+        j = test[e][1]
+        k = test[e][2]
+        l = test[e][3]
+        m = test[e][4]
+        n = test[e][4]
+        o = test[e][5]
+        base_array[:,e] = gen_best
+        v1 = x[:,j].copy()
+        v1_array[:,e] = v1
+        v2 = x[:,k].copy()
+        v2_array[:,e] = v2
+        v3 = x[:,l].copy()
+        v3_array[:,e] = v3
+        v4 = x[:,m].copy()
+        v4_array[:,e] = v4        
+        v5 = x[:,n].copy()
+        v5_array[:,e] = v5
+        v6 = x[:,o].copy()
+        v6_array[:,e] = v6        
+
+    p = base_array + F_array*(v2_array-v1_array) + F2_array*(v4_array-v3_array) + F3_array*(v5_array-v6_array)
+    return p
+
 
 def selection_vector(NP_indices, DE_model, X_train, y_train, gen, mindex,
               reg_flag, error_metric_, m, n1, n2, n3,
@@ -372,24 +342,41 @@ def crossover_vector(NP_indices, y, x, CR):
 
     # at least one column vector swapped based on random int k
 
-    z = x.copy()
+    z = x.copy()    
 
-    for e in NP_indices:
-        x_ = x[e].copy()
-        y_ = y[e].copy()
-        z_ = z[e].copy()
+    x_ = x.copy()
+    y_ = y.copy()
+    z_ = z.copy()
 
-        m,n = x_.shape
+    m,n = x_.shape
 
-        for i in np.arange(0,m):
-            k = np.random.choice(np.arange(0,n),) # think this should be n
-            for j in np.arange(0,n):
-                if (random.uniform(0, 1) <= CR[j] or j == k): # think this should be j
-                    z_[i,j] = y_[i,j].copy()
-                else:
-                    z_[i,j] = x_[i,j].copy()
-        z[e] = z_.copy()
-    return z
+    for i in np.arange(0,m):
+        k = np.random.choice(np.arange(0,n),) # think this should be n
+        for j in np.arange(0,n):
+            if (random.uniform(0, 1) <= CR[i,j] or j == k): # think this should be j
+                z_[i,j] = y_[i,j].copy()
+            else:
+                z_[i,j] = x_[i,j].copy()
+
+    # OLD
+
+    # for e in NP_indices:
+    #     x_ = x[e].copy()
+    #     y_ = y[e].copy()
+    #     z_ = z[e].copy()
+
+    #     m,n = x_.shape
+
+    #     for i in np.arange(0,m):
+    #         k = np.random.choice(np.arange(0,n),) # think this should be n
+    #         for j in np.arange(0,n):
+    #             if (random.uniform(0, 1) <= CR[i,j] or j == k): # think this should be j
+    #                 z_[i,j] = y_[i,j].copy()
+    #             else:
+    #                 z_[i,j] = x_[i,j].copy()
+    #     z[e] = z_.copy()
+
+    return z_
 
 
 def create_crossover_vector(x_, m, n1, n2, n3, CR_W0, CR_W1, CR_W2, CR_W3, CR_b0, CR_b1, CR_b2, CR_b3):
@@ -424,37 +411,37 @@ def create_crossover_vector(x_, m, n1, n2, n3, CR_W0, CR_W1, CR_W2, CR_W3, CR_b0
     
     return CR
 
-def mutation_vector(NP, NP_indices, F_1, F_2, F_3, x_weight, MCMC, gen_best_x_weight, mutation_type):
+def mutation_vector(d, NP, NP_indices, F_1, F_2, F_3, x_weight, gen_best_x_weight, mutation_type):
 
     if mutation_type == 'random':
 
-        y = mutate(NP, NP_indices, F_1, x_weight, MCMC)
+        y = mutate(d, NP, NP_indices, F_1, x_weight)
 
     # DE/rand/2 needs minimum NP = 6
 
     if mutation_type == 'random2':
 
-        y = mutate_two(NP, NP_indices, F_1, F_2, x_weight, MCMC)
+        y = mutate_two(d, NP, NP_indices, F_1, F_2, x_weight)
 
     # DE/rand/3 needs minimum NP = 8
 
     if mutation_type == 'random3':
 
-        y = mutate_three(NP, NP_indices, F_1, F_2, F_3, x_weight, MCMC)
+        y = mutate_three(d, NP, NP_indices, F_1, F_2, F_3, x_weight)
     
     # DE/best/123
 
     if mutation_type in ['best']:
 
-        y = mutate_best(NP, NP_indices, F_1, gen_best_x_weight, x_weight, MCMC)
+        y = mutate_best(d, NP, NP_indices, F_1, gen_best_x_weight, x_weight)
 
     if mutation_type in ['best2']:
 
-        y = mutate_best_two(NP, NP_indices, F_1, F_2, gen_best_x_weight, x_weight, MCMC)
+        y = mutate_best_two(d, NP, NP_indices, F_1, F_2, gen_best_x_weight, x_weight)
 
     if mutation_type in ['best3']:
 
-        y = mutate_best_three(NP, NP_indices, F_1, F_2, F_3, gen_best_x_weight, x_weight, MCMC)
+        y = mutate_best_three(d, NP, NP_indices, F_1, F_2, F_3, gen_best_x_weight, x_weight)
 
     return y
 
@@ -774,14 +761,14 @@ def differential_evolution_vector(DE_model, train_size_):
 
             # populate initial generation with best candidates
 
-            x = {}
+            x = np.full((d, NP), 1.0)
 
             for k in NP_indices:
-                x[k] = ix_[iidx[k]]
+                x[:,k] = ix_[:,iidx[k]]
 
             # set gen best
 
-            gen_best_x = ix_[imindex]
+            gen_best_x = ix_[:,imindex]
 
             initial_fitness.sort()
             w = np.mean(initial_fitness[:NP])
@@ -813,23 +800,18 @@ def differential_evolution_vector(DE_model, train_size_):
 
         # default CR
 
-        CR_W0, CR_W1, CR_W2, CR_W3, CR_b0, CR_b1, CR_b2, CR_b3 = DE_model.return_F_CR('default', lowerF, upperF, CR_delta, DE_model.CR)
+        CR_array = DE_model.return_F_CR('default', lowerF, upperF, CR_delta, DE_model.CR, d, NP)
 
-        # default F values for each weight matrix constant
+        # default F values
 
-        F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3 = DE_model.return_F_CR('default', lowerF, upperF, F_delta, DE_model.F)
-        F2_W0, F2_W1, F2_W2, F2_W3, F2_b0, F2_b1, F2_b2, F2_b3 = DE_model.return_F_CR('default', lowerF, upperF, F_delta, DE_model.F)
-        F3_W0, F3_W1, F3_W2, F3_W3, F3_b0, F3_b1, F3_b2, F3_b3 = DE_model.return_F_CR('default', lowerF, upperF, F_delta, DE_model.F)
-
-        F_one = F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3
-        F_two = F2_W0, F2_W1, F2_W2, F2_W3, F2_b0, F2_b1, F2_b2, F2_b3
-        F_three = F3_W0, F3_W1, F3_W2, F3_W3, F3_b0, F3_b1, F3_b2, F3_b3
+        F_array = DE_model.return_F_CR('default', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+        F2_array = DE_model.return_F_CR('default', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+        F3_array = DE_model.return_F_CR('default', lowerF, upperF, CR_delta, DE_model.F, d, NP)
 
         # default mutation type
         
         mutation_list = DE_model.return_mutation_list(NP)    
         mutation_op = DE_model.return_mutation_type('default', mutation_list, DE_model.mutation_type)
-        mutation_W0, mutation_W1, mutation_W2, mutation_W3, mutation_b0, mutation_b1, mutation_b2, mutation_b3 = mutation_op
 
         # refinement steps
 
@@ -848,51 +830,25 @@ def differential_evolution_vector(DE_model, train_size_):
 
             if F_refine == 'variable' and current > refine_current_start and i > refine_gen_start:
 
-                F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3 = DE_model.return_F_CR('variable', lowerF, upperF, F_delta, F)
-                F2_W0, F2_W1, F2_W2, F2_W3, F2_b0, F2_b1, F2_b2, F2_b3 = DE_model.return_F_CR('variable', lowerF, upperF, F_delta, F)
-                F3_W0, F3_W1, F3_W2, F3_W3, F3_b0, F3_b1, F3_b2, F3_b3 = DE_model.return_F_CR('variable', lowerF, upperF, F_delta, DE_model.F)
-
-                F_one = F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3
-                F_two = F2_W0, F2_W1, F2_W2, F2_W3, F2_b0, F2_b1, F2_b2, F2_b3
-                F_three = F3_W0, F3_W1, F3_W2, F3_W3, F3_b0, F3_b1, F3_b2, F3_b3
-
-            if F_refine == 'weight_variable' and current > refine_current_start and i > refine_gen_start:
-
-                F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3 = DE_model.return_F_CR('weight_variable', lowerF, upperF, F_delta, F)
-                F2_W0, F2_W1, F2_W2, F2_W3, F2_b0, F2_b1, F2_b2, F2_b3 = DE_model.return_F_CR('weight_variable', lowerF, upperF, F_delta, F)
-                F3_W0, F3_W1, F3_W2, F3_W3, F3_b0, F3_b1, F3_b2, F3_b3 = DE_model.return_F_CR('weight_variable', lowerF, upperF, F_delta, DE_model.F)
-
-                F_one = F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3
-                F_two = F2_W0, F2_W1, F2_W2, F2_W3, F2_b0, F2_b1, F2_b2, F2_b3
-                F_three = F3_W0, F3_W1, F3_W2, F3_W3, F3_b0, F3_b1, F3_b2, F3_b3
+                F_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F2_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F3_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
 
             if CR_refine == 'variable' and current > refine_current_start and i > refine_gen_start:
 
-                CR_W0, CR_W1, CR_W2, CR_W3, CR_b0, CR_b1, CR_b2, CR_b3 = DE_model.return_F_CR('variable', lowerCR, upperCR, CR_delta, DE_model.CR)
-
-            if CR_refine == 'weight_variable' and current > refine_current_start and i > refine_gen_start:
-
-                CR_W0, CR_W1, CR_W2, CR_W3, CR_b0, CR_b1, CR_b2, CR_b3 = DE_model.return_F_CR('weight_variable', lowerCR, upperCR, CR_delta, DE_model.CR)
+                CR_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.CR, d, NP)
 
             if mutation_refine == 'variable' and current > refine_current_start and i > refine_gen_start:
                 
-                mutation_op = DE_model.return_mutation_type('variable', mutation_list, DE_model.mutation_type)             
-                mutation_W0, mutation_W1, mutation_W2, mutation_W3, mutation_b0, mutation_b1, mutation_b2, mutation_b3 = mutation_op
-
-            if mutation_refine == 'weight_variable' and current > refine_current_start and i > refine_gen_start:
-                
-                mutation_op = DE_model.return_mutation_type('weight_variable', mutation_list, DE_model.mutation_type)
-                mutation_W0, mutation_W1, mutation_W2, mutation_W3, mutation_b0, mutation_b1, mutation_b2, mutation_b3 = mutation_op
+                mutation_op = DE_model.return_mutation_type('variable', mutation_list, DE_model.mutation_type)
         
         # mutation
 
-        F_1, F_2, F_3 = create_mutation_vector(x[0], m, n1, n2, n3, F_one, F_two, F_three)
-        y = mutation_vector(NP, NP_indices, F_1, F_2, F_3, x, MCMC, gen_best_x, mutation_W0)
+        y = mutation_vector(d, NP, NP_indices, F_array, F2_array, F3_array, x, gen_best_x, mutation_op)
                 
         # crossover
 
-        CR = create_crossover_vector(x[0], m, n1, n2, n3, CR_W0, CR_W1, CR_W2, CR_W3, CR_b0, CR_b1, CR_b2, CR_b3)
-        z = crossover_vector(NP_indices, y, x, CR)   
+        z = crossover_vector(NP_indices, y, x, CR_array)
         
         # selection
 

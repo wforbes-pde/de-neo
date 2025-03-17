@@ -50,9 +50,9 @@ def main(argv=None):
                       # ('latin',None,None), # weekend
                       #  ('skunk',None,None),
                     ], 
-            'refine_param': [ # (10,10,10,False), 
+            'refine_param': [  (10,10,10,False), 
                              # (10,10,10,True), 
-                              (10,10,10,True), 
+                             # (10,10,10,True), 
                                 ], # (100,2,10) refine_gen_start, refine_current_start, refine_mod_start, refine_random
                             # return_combo_list(ffs, 2),
             'F_refine': [ 'default',], # 'default', 'variable', 'weight_variable',

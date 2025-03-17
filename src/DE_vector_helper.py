@@ -2237,18 +2237,10 @@ def return_fitted_dist(Wp, param, key, size_):
 
     return T
 
-def return_F_CR(flag, lowerF, upperF, F_delta, F_):
+def return_F_CR(flag, lowerF, upperF, F_delta, F_, d, NP):
 
     if flag == 'default':
-        F_W0 = F_
-        F_W1 = F_
-        F_W2 = F_
-        F_W3 = F_
-
-        F_b0 = F_
-        F_b1 = F_
-        F_b2 = F_
-        F_b3 = F_
+        F = np.full((d, NP), F_)
 
     if flag == 'variable':
         movie_list = np.arange(lowerF,upperF,F_delta)
@@ -2280,7 +2272,7 @@ def return_F_CR(flag, lowerF, upperF, F_delta, F_):
         F_b2 = random.choice(movie_list)
         F_b3 = random.choice(movie_list)
 
-    return F_W0, F_W1, F_W2, F_W3, F_b0, F_b1, F_b2, F_b3
+    return F
 
 def return_mutation_type(flag, mutation_list, mutation_default):
 
@@ -2316,10 +2308,8 @@ def return_mutation_type(flag, mutation_list, mutation_default):
         mutation_b1 = random.choice(mutation_list)
         mutation_b2 = random.choice(mutation_list)
         mutation_b3 = random.choice(mutation_list)
-        
-    mutation_op = mutation_W0, mutation_W1, mutation_W2, mutation_W3, mutation_b0, mutation_b1, mutation_b2, mutation_b3
     
-    return mutation_op
+    return mutation_W0
 
 
 def return_mutation_list(NP):
