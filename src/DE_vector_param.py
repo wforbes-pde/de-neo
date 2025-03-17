@@ -34,7 +34,7 @@ def main(argv=None):
     #ffs = [10,20,30,40]
 
     DE_grid = {'G':[ 4000, ], # 2000
-            'NP':[ 4 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
+            'NP':[ 16 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
             'F':[ 0.9, ], # 0.9, 0.7, 0.5 LARGER 0.9 SEEMS TO LEAD TO MEAN-VALUE FORECASTS!!!!!!!!!!!!!!!!!!!!
             'CR': [ 0.7 ], # 0.7
             'mutation_type': [ 'random', ], # random2 weekend
@@ -65,7 +65,7 @@ def main(argv=None):
             'error_metric': [ 'rmsle' ], # 'rmsle', 'rmse', 'r2',
             'run_enh':  [ # run_svd, run_cluster, run_local
                              # (True, True, True),
-                               (False, False, False),
+                               (False, False, True),
                              #  (False, True, True),
                             ],
                           # return_combo_list([True, False], 3),
@@ -73,7 +73,7 @@ def main(argv=None):
                             # (True,50,6), 
                                  ], # run_exh, current, subset
             'val_sample': [ 4, ], # bma val minimum indices
-            'd': [ 5, ], # dimension
+            'd': [ 10, ], # dimension
             'test_function': [ 'rosenbrock' ], # dimension
     }
     

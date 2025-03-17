@@ -86,7 +86,6 @@ class DEModelClass():
         self.return_F_CR = return_F_CR
         self.return_mutation_list = return_mutation_list
         self.return_mutation_type = return_mutation_type
-        self.mutation = mutation
         self.crossover_component = crossover_component
         self.return_running_avg_residual = return_running_avg_residual
         self.perform_svd_filter = perform_svd_filter
@@ -652,61 +651,20 @@ def perturbation_param(i, current):
 
     return samples, low, high
 
-def random_uniform(xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3, samples, NP_indices):
-
-    rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3 = {}, {}, {}, {}, {}, {}, {}, {}
-    pgp_W0, pgp_W1, pgp_W2, pgp_W3, pgp_b0, pgp_b1, pgp_b2, pgp_b3 = {}, {}, {}, {}, {}, {}, {}, {}
+def random_uniform(xgp, samples, NP_indices, DE_model):
+    d = DE_model.d
+    NP = DE_model.NP
 
     NP = len(NP_indices)
     total = samples*NP
     low_ = -1e-1
     high_ = 1e-1
 
-    for e in np.arange(0,total):
-        h=e%NP
-        m,n = xgp_W0[0].shape
-        X_W0 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_W0[e] = X_W0
-        rgp_W0[e] = xgp_W0[h].copy() + X_W0
+    search_array = np.repeat(xgp, samples, axis=1)
+    perturbation = np.random.uniform(low=low_, high=high_, size=(d, total))
+    local_array = search_array + perturbation
 
-        m,n = xgp_W1[0].shape
-        X_W1 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_W1[e] = X_W1
-        rgp_W1[e] = xgp_W1[h].copy() + X_W1
-
-        m,n = xgp_W2[0].shape
-        X_W2 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_W2[e] = X_W2
-        rgp_W2[e] = xgp_W2[h].copy() + X_W2
-
-        m,n = xgp_W3[0].shape
-        X_W3 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_W3[e] = X_W3
-        rgp_W3[e] = xgp_W3[h].copy() + X_W3
-
-        m,n = xgp_b0[0].shape
-        X_b0 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_b0[e] = X_b0
-        rgp_b0[e] = xgp_b0[h].copy() + X_b0
-
-        m,n = xgp_b1[0].shape
-        X_b1 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_b1[e] = X_b1
-        rgp_b1[e] = xgp_b1[h].copy() + X_b1
-
-        m,n = xgp_b2[0].shape
-        X_b2 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_b2[e] = X_b2
-        rgp_b2[e] = xgp_b2[h].copy() + X_b2
-
-        m,n = xgp_b3[0].shape
-        X_b3 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        pgp_b3[e] = X_b3
-        rgp_b3[e] = xgp_b3[h].copy() + X_b3
-
-    local = rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3
-
-    return local
+    return local_array
 
 def random_uniform_delta(rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3, samples, NP_indices,
                    delta_X, e):
@@ -978,20 +936,13 @@ def create_cluster(i, xgp, clustering_type, num_of_clusters, key):
 
     return h
 
-def cluster_array(xgp, clustering_type, num_of_clusters):
+def cluster_array(xgp, clustering_type, num_of_clusters, d):
 
-    # reshaping for sklearn
-    # flatten each matrix
-    
-    d = len(xgp.keys())
-    a,b = xgp[0].shape
-    c = a*b
-    X = np.zeros((c,d))
+    # dimensions
 
-    for j in xgp.keys():
-        X[:,j] = xgp[j].flatten()
+    n_neighbors_ = int(np.sqrt(d))
 
-    X = X.T
+    X = xgp.T
 
     # predetermined number of clusters for kmeans, spectral
 
@@ -1007,7 +958,7 @@ def cluster_array(xgp, clustering_type, num_of_clusters):
 
     if clustering_type == 'spectral':
         sc = SpectralClustering(n_clusters=num_of_clusters, n_init=10, affinity='nearest_neighbors', 
-                                n_neighbors = d, random_state=42).fit(X)
+                                n_neighbors = n_neighbors_, random_state=42).fit(X)
 
         # determine centers from clustering
 
@@ -1018,8 +969,7 @@ def cluster_array(xgp, clustering_type, num_of_clusters):
         #centers = pd.DataFrame(df['data'].tolist(),index=df['id'] ).groupby(level=0).median().agg(np.array,1) original
         centers = pd.DataFrame(df['data'].tolist(),index=df['id'] ).groupby(level=0).mean().agg(np.array,1)
         centers = centers.reset_index(drop = True)
-        #centers = np.array([np.broadcast_to(row, shape=(d)) for row in centers])
-        centers = np.array([np.broadcast_to(row, shape=(a*b)) for row in centers])
+        centers = np.array([np.broadcast_to(row, shape=(d)) for row in centers])
         clabels = sc.labels_
 
     # affinity
@@ -1066,14 +1016,9 @@ def cluster_array(xgp, clustering_type, num_of_clusters):
 
     # convert center points array into dict
         
-    centers = centers.T        
-    center_dict = {}
-        
-    for j in np.arange(0,num_of_clusters):
-        #center_dict[j] = centers[:,j]
-        center_dict[j] = centers[:,j].reshape(a,b)
+    centers = centers.T
 
-    return center_dict
+    return centers
 
 def create_bootstrap_samples(x_data, y_data, num_samples, ratio_):
 
@@ -1199,15 +1144,12 @@ def return_F_CR(flag, lowerF, upperF, F_delta, F_, d, NP):
 def return_mutation_type(flag, mutation_list, mutation_default):
 
     if flag == 'default':
-        mutation_W0 = mutation_default
+        mutation_ = mutation_default
 
     if flag == 'variable':
-        mutation_W0 = random.choice(mutation_list)
-
-    if flag == 'weight_variable':
-        mutation_W0 = random.choice(mutation_list)
+        mutation_ = random.choice(mutation_list)
     
-    return mutation_W0
+    return mutation_
 
 
 def return_mutation_list(NP):
@@ -2420,10 +2362,8 @@ def return_bma_val(return_method, dfs, optimum_point, x_2023, NN_model, test_dat
 
 
 
-def perform_clustering(NP,bootstrapping, X_train, y_train, min_value, maindex, DE_model,
-                       reg_flag, NN_model, n_, gen_points, i):
+def perform_clustering(NP, min_value, maindex, DE_model, gen_points, i):
     
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
     clustering_list = ['kmeans', 'spectral', 'agg']
     clustering_type = random.choice(clustering_list)
 
@@ -2432,95 +2372,41 @@ def perform_clustering(NP,bootstrapping, X_train, y_train, min_value, maindex, D
         num_of_clusters_list = [3]
     num_of_clusters = random.choice(num_of_clusters_list)
     
-    cgp_W0 = cluster_array(xgp_W0, clustering_type, num_of_clusters)
-    cgp_W1 = cluster_array(xgp_W1, clustering_type, num_of_clusters)
-    cgp_W2 = cluster_array(xgp_W2, clustering_type, num_of_clusters)
-    cgp_W3 = cluster_array(xgp_W3, clustering_type, num_of_clusters)
-
-    cgp_b0 = cluster_array(xgp_b0, clustering_type, num_of_clusters)
-    cgp_b1 = cluster_array(xgp_b1, clustering_type, num_of_clusters)
-    cgp_b2 = cluster_array(xgp_b2, clustering_type, num_of_clusters)
-    cgp_b3 = cluster_array(xgp_b3, clustering_type, num_of_clusters)
+    cgp_W0 = cluster_array(gen_points, clustering_type, num_of_clusters, DE_model.d)
 
     # fitness
 
-    c_errors = []
-
-    for s in np.arange(0,num_of_clusters):
-        if bootstrapping:
-            X_train_ = X_train[s%NP]
-            y_train_ = y_train[s%NP]
-            m_ = len(y_train_)
-            c_fit, cv = fitness(X_train_, cgp_W0[s], cgp_W1[s], cgp_W2[s], cgp_W3[s], cgp_b0[s], cgp_b1[s], cgp_b2[s], cgp_b3[s],
-                            y_train_, m_, DE_model.error_metric, reg_flag, NN_model)
-        else:
-            c_fit, cv = fitness(X_train, cgp_W0[s], cgp_W1[s], cgp_W2[s], cgp_W3[s], cgp_b0[s], cgp_b1[s], cgp_b2[s], cgp_b3[s],
-                            y_train, n_, DE_model.error_metric, reg_flag, NN_model)
-        c_errors.append(c_fit)
+    cluster_fitness = DE_model.analytical(cgp_W0, DE_model.d)
 
     # find best fitness
 
-    c_min_value = np.amin(c_errors)
-    c_index = np.where(c_errors == c_min_value)
+    c_min_value = np.amin(cluster_fitness)
+    c_index = np.where(cluster_fitness == c_min_value)
     c_index = c_index[0][0]
 
     if c_min_value < min_value:
         #logging.info(f'gen {i} {clustering_type} {num_of_clusters} clustering min {c_min_value} max {max_value}')
         logging.info(f'gen {i} {clustering_type} {num_of_clusters} clustering min {c_min_value} min {min_value}')
-        xgp_W0[maindex] = cgp_W0[c_index].copy()
-        xgp_W1[maindex] = cgp_W1[c_index].copy()
-        xgp_W2[maindex] = cgp_W2[c_index].copy()
-        xgp_W3[maindex] = cgp_W3[c_index].copy()
-
-        xgp_b0[maindex] = cgp_b0[c_index].copy()
-        xgp_b1[maindex] = cgp_b1[c_index].copy()
-        xgp_b2[maindex] = cgp_b2[c_index].copy()
-        xgp_b3[maindex] = cgp_b3[c_index].copy()
+        gen_points[:,maindex] = cgp_W0[:,c_index].copy()
     
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
     return gen_points, c_min_value
 
-def perform_search(NP,bootstrapping, X_train, y_train, min_value, maindex, DE_model,
-                        reg_flag, NN_model, n_, gen_points,i, NP_indices, current):
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
+def perform_search(NP, min_value, maindex, DE_model, gen_points,i, NP_indices, current):
     local_ = 20
     samples = local_ * (int(current/1000) + 1)
     
-    #logging.INFO(f'gen {i} STARTING uniform local search samples {samples}')
-    #logging.INFO(f'gen {i} STARTING uniform local search samples')
-    local = random_uniform(xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3, samples, NP_indices)
-    rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3 = local
+    local = random_uniform(gen_points, samples, NP_indices, DE_model)    
+    search_fitness = DE_model.analytical(local, DE_model.d)
     
-    # fitness
+    # determine best generation point
 
-    l_errors = []
-    l = samples*NP
+    l_fit = np.amin(search_fitness)
+    mindex = np.where(search_fitness == l_fit)
+    mindex = mindex[0] # index integer
 
-    for s in np.arange(0,l):
-        if bootstrapping:
-            X_train_ = X_train[s%NP]
-            y_train_ = y_train[s%NP]
-            m_ = len(y_train_)
-            l_fit, rv = fitness(X_train_, rgp_W0[s], rgp_W1[s], rgp_W2[s], rgp_W3[s], rgp_b0[s], rgp_b1[s], rgp_b2[s], rgp_b3[s],
-                                y_train_, m_, DE_model.error_metric, reg_flag, NN_model)
-        else:
-            l_fit, yb = fitness(X_train, rgp_W0[s], rgp_W1[s], rgp_W2[s], rgp_W3[s], rgp_b0[s], rgp_b1[s], rgp_b2[s], rgp_b3[s],
-                    y_train, n_, DE_model.error_metric, reg_flag, NN_model) # gen_train_score
-        l_errors.append(l_fit)
-        
-        if l_fit < min_value:
-            logging.info(f'gen {i} uniform local search {l_fit} min {min_value} samples {samples}')    
-            xgp_W0[s%NP] = rgp_W0[s].copy()
-            xgp_W1[s%NP] = rgp_W1[s].copy()
-            xgp_W2[s%NP] = rgp_W2[s].copy()
-            xgp_W3[s%NP] = rgp_W3[s].copy()
+    if l_fit < min_value:
+        gen_points[:,maindex] = local[:,mindex].reshape(DE_model.d,)
 
-            xgp_b0[s%NP] = rgp_b0[s].copy()
-            xgp_b1[s%NP] = rgp_b1[s].copy()
-            xgp_b2[s%NP] = rgp_b2[s].copy()
-            xgp_b3[s%NP] = rgp_b3[s].copy()
-            break
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
     return gen_points, l_fit 
 
 

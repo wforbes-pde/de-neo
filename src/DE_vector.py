@@ -128,7 +128,7 @@ def mutate_three(d, NP, NP_indices, F_array, F2_array, F3_array, x):
 
     for j in NP_indices:
         indices.remove(j)
-        a = np.random.choice(indices, 5, replace=False)
+        a = np.random.choice(indices, 7, replace=False)
         a = list(a)
         test.append(a)
         indices = list(np.arange(0,NP))
@@ -139,8 +139,8 @@ def mutate_three(d, NP, NP_indices, F_array, F2_array, F3_array, x):
         k = test[e][2]
         l = test[e][3]
         m = test[e][4]
-        n = test[e][4]
-        o = test[e][5]
+        n = test[e][5]
+        o = test[e][6]
         base = x[:,i].copy()
         base_array[:,e] = base
         v1 = x[:,j].copy()
@@ -177,15 +177,14 @@ def mutate_best(d, NP, NP_indices, F_array, gen_best, x):
 
     for j in NP_indices:
         indices.remove(j)
-        a = np.random.choice(indices, 3, replace=False)
+        a = np.random.choice(indices, 2, replace=False)
         a = list(a)
         test.append(a)
         indices = list(np.arange(0,NP))
 
     for e in NP_indices:
-        i = test[e][0]
-        j = test[e][1]
-        k = test[e][2]
+        j = test[e][0]
+        k = test[e][1]
         base_array[:,e] = gen_best
         v1 = x[:,j].copy()
         v1_array[:,e] = v1
@@ -212,19 +211,17 @@ def mutate_best_two(d, NP, NP_indices, F_array, F2_array, gen_best, x):
 
     for j in NP_indices:
         indices.remove(j)
-        a = np.random.choice(indices, 5, replace=False)
+        a = np.random.choice(indices, 4, replace=False)
         a = list(a)
         test.append(a)
         indices = list(np.arange(0,NP))
 
     for e in NP_indices:
-        i = test[e][0]
-        j = test[e][1]
-        k = test[e][2]
-        l = test[e][3]
-        m = test[e][4]
-        base = x[:,i].copy()
-        base_array[:,e] = base
+        j = test[e][0]
+        k = test[e][1]
+        l = test[e][2]
+        m = test[e][3]
+        base_array[:,e] = gen_best
         v1 = x[:,j].copy()
         v1_array[:,e] = v1
         v2 = x[:,k].copy()
@@ -256,17 +253,16 @@ def mutate_best_three(d, NP, NP_indices, F_array, F2_array, F3_array, gen_best, 
 
     for j in NP_indices:
         indices.remove(j)
-        a = np.random.choice(indices, 5, replace=False)
+        a = np.random.choice(indices, 6, replace=False)
         a = list(a)
         test.append(a)
         indices = list(np.arange(0,NP))
 
     for e in NP_indices:
-        i = test[e][0]
-        j = test[e][1]
-        k = test[e][2]
-        l = test[e][3]
-        m = test[e][4]
+        j = test[e][0]
+        k = test[e][1]
+        l = test[e][2]
+        m = test[e][3]
         n = test[e][4]
         o = test[e][5]
         base_array[:,e] = gen_best
@@ -426,7 +422,6 @@ def differential_evolution_vector(DE_model):
 
     # enhancement
     
-    #one, two = reg_flag
     run_svd, run_cluster, run_local = run_enh  
     
     NP_indices = list(np.arange(0,NP))
@@ -556,7 +551,6 @@ def differential_evolution_vector(DE_model):
             if current > refine_current_start and i > refine_gen_start and refine_random:
                 
                 variation_list = ['default', 'variable', 'dimension_variable', 'candidate_variable', 'full_variable',]
-                #variation_list = ['full_variable',]
                 F_refine = random.choice(variation_list)
                 CR_refine = random.choice(variation_list)
                 mutation_refine = random.choice(variation_list)
@@ -608,7 +602,6 @@ def differential_evolution_vector(DE_model):
 
         # determine best generation point
 
-        #gen_fitness_values = np.array(errors)
         min_value = np.amin(gen_fitness_values)
         mindex = np.where(gen_fitness_values == min_value)
         mindex = mindex[0][0] # index integer
@@ -641,38 +634,10 @@ def differential_evolution_vector(DE_model):
         s_scalar_value = 0
         s_exp_value = 0
 
-        # SVD filter
-
-        comparison_value = min_value
-
-        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_filter_r:
-            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
-            svd_points, svd_fit  = DE_model.perform_svd_filter(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
-                            reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
-            xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = svd_points
-        
-        # scalar SVD
-
-        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_scalar_r:
-            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
-            svd_scalar_points, s_scalar_value  = DE_model.perform_svd_filter(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
-                                    reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
-            xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = svd_scalar_points
-        
-        # exp scalar
-
-        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_exp_r:
-            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
-            svd_exp_points, s_exp_value  = DE_model.perform_svd_exp(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
-                                            reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
-            xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = svd_exp_points
-        
         # clustering
 
         if current > refine_current_start and i_accept > 0 and run_cluster and current % refine_mod_start in cluster_r:
-            cluster_points, c_min_value = DE_model.perform_clustering(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
-                        reg_flag, NN_model, n_, xgp,i)            
-            xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = cluster_points
+            cluster_points, c_min_value = DE_model.perform_clustering(NP, comparison_value, maindex, DE_model, xgp,i)            
 
         # local search
         # number of samples perturbed around population
@@ -681,9 +646,31 @@ def differential_evolution_vector(DE_model):
         # replaces the minimum and process exit
 
         if current > refine_current_start and i_accept > 0 and run_local and current % refine_mod_start in local_r:
-            search_points, l_fit = DE_model.perform_search(NP,bootstrapping, x_dict, y_dict,comparison_value, maindex, DE_model,
-                        reg_flag, NN_model, n_, xgp,i, NP_indices, current)
-            xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = search_points
+            search_points, l_fit = DE_model.perform_search(NP,comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
+
+        # SVD filter
+
+        comparison_value = min_value
+
+        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_filter_r:
+            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
+            svd_points, svd_fit  = DE_model.perform_svd_filter(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
+                            reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
+        
+        # scalar SVD
+
+        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_scalar_r:
+            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
+            svd_scalar_points, s_scalar_value  = DE_model.perform_svd_filter(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
+                                    reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
+        
+        # exp scalar
+
+        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_exp_r:
+            gen_points = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3
+            svd_exp_points, s_exp_value  = DE_model.perform_svd_exp(NP,bootstrapping, x_dict, y_dict, comparison_value, maindex, DE_model,
+                                            reg_flag, NN_model, n_, gen_points,i, NP_indices, current)
+            xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = svd_exp_points
         
         # collect parameters and data
         
