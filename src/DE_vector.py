@@ -304,7 +304,7 @@ def selection_vector(d, NP_indices, DE_model, i, mindex, error_metric, x_points,
 
     return x_points, i_accept
 
-def crossover_vector(NP_indices, y, x, CR):
+def crossover_vector(y, x, CR):
 
     # at least one column vector swapped based on random int k
 
@@ -392,7 +392,7 @@ def generate_initial_population(d, NP, NP_indices, init):
     
     return x
 
-def differential_evolution_vector(DE_model, train_size_):
+def differential_evolution_vector(DE_model):
     
     NP = DE_model.NP
     G = DE_model.g
@@ -404,7 +404,6 @@ def differential_evolution_vector(DE_model, train_size_):
     run_enh = DE_model.run_enh
     run = DE_model.run
     d = DE_model.d
-    bootstrapping, ratio_ = DE_model.bootstrapping
 
     # parameters
 
@@ -556,24 +555,38 @@ def differential_evolution_vector(DE_model, train_size_):
             
             if current > refine_current_start and i > refine_gen_start and refine_random:
                 
-                variation_list = ['default', 'variable', 'weight_variable']
+                variation_list = ['default', 'variable', 'dimension_variable', 'candidate_variable', 'full_variable',]
+                #variation_list = ['full_variable',]
                 F_refine = random.choice(variation_list)
                 CR_refine = random.choice(variation_list)
                 mutation_refine = random.choice(variation_list)
 
             if F_refine == 'variable' and current > refine_current_start and i > refine_gen_start:
-
                 F_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
                 F2_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
                 F3_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
 
-            if CR_refine == 'variable' and current > refine_current_start and i > refine_gen_start:
+            if F_refine == 'dimension_variable' and current > refine_current_start and i > refine_gen_start:
+                F_array = DE_model.return_F_CR('dimension_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F2_array = DE_model.return_F_CR('dimension_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F3_array = DE_model.return_F_CR('dimension_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
 
+            if F_refine == 'candidate_variable' and current > refine_current_start and i > refine_gen_start:
+                F_array = DE_model.return_F_CR('candidate_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F2_array = DE_model.return_F_CR('candidate_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F3_array = DE_model.return_F_CR('candidate_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+
+            if F_refine == 'full_variable' and current > refine_current_start and i > refine_gen_start:
+                F_array = DE_model.return_F_CR('full_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F2_array = DE_model.return_F_CR('full_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+                F3_array = DE_model.return_F_CR('full_variable', lowerF, upperF, CR_delta, DE_model.F, d, NP)
+
+            if CR_refine == 'variable' and current > refine_current_start and i > refine_gen_start:
                 CR_array = DE_model.return_F_CR('variable', lowerF, upperF, CR_delta, DE_model.CR, d, NP)
 
-            if mutation_refine == 'variable' and current > refine_current_start and i > refine_gen_start:
-                
-                mutation_op = DE_model.return_mutation_type('variable', mutation_list, DE_model.mutation_type)
+            if mutation_refine == 'variable' and current > refine_current_start and i > refine_gen_start:                
+                mutation_op = DE_model.return_mutation_type('variable', mutation_list, DE_model.mutation_type)           
+
         
         # mutation
 
@@ -581,7 +594,7 @@ def differential_evolution_vector(DE_model, train_size_):
                 
         # crossover
 
-        z = crossover_vector(NP_indices, y, x, CR_array)
+        z = crossover_vector(y, x, CR_array)
         
         # selection
 
@@ -686,16 +699,16 @@ def differential_evolution_vector(DE_model, train_size_):
                         'residual':[train_residual], 'run_avg_residual':[train_run_avg_residual_rmse], 'track_len':[track_len],
                         'return_method':[return_method], 'mutation_type_':[mutation_op], 
                         'error_metric':[error_metric], 
-                        'run_enh':[str(run_enh)], 'bootstrapping':[str(DE_model.bootstrapping)],
-                        'train_size':[str(train_size_)], 'current':[current], 'i_accept':[i_accept], 
-                        'TrainRMSE':[min_value],'exh':[str(DE_model.exhaustive)], 'val_sample':[val_sample], 
+                        'run_enh':[str(run_enh)], 
+                         'current':[current], 'i_accept':[i_accept], 
+                        'TrainMin':[min_value],'exh':[str(DE_model.exhaustive)], 'val_sample':[val_sample], 
                         # 'ValScore':[gen_val_score], 'ValResidual':[val_residual], 'ValRAResid':[val_run_avg_resid], 
                         'clustering_score':[c_min_value], 'local_score':[l_fit], 
                         'svd_value':[svd_fit], 's_scalar_value':[s_scalar_value], 's_exp_value':[s_exp_value], 
                         'Exit':[str(False)],
                     })        
         
-        logging.info(f'run {run} gen {i} index {mindex} {error_metric} {min_value} train resid {train_residual} val resid {val_residual} current {current}')
+        logging.info(f'run {run} gen {i} index {mindex} {error_metric} minimum {min_value} train resid {train_residual} val resid {val_residual} current {current}')
         
         if i == G-1:
             logging.info(f'run {run} gen {i} maximum generation exit criteria')

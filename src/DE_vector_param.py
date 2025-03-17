@@ -33,25 +33,22 @@ def main(argv=None):
     ffs = [3,4,5] # n^3
     #ffs = [10,20,30,40]
 
-    DE_grid = {'G':[ 2000, ], # 2000
-            'NP':[ 16 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
+    DE_grid = {'G':[ 4000, ], # 2000
+            'NP':[ 4 ] , # 4,4,4,4,4,4,4,4,4,4,  6,6,6,6,6,6,6,6,6,6,  8,8,8,8,8,8,8,8,8,8, 16,16,16,16,16,16,16,16,16,16, 12,12,12,12,12,12,12,12,12,12, 10,10,10,10,10,10,10,10,10,10,
             'F':[ 0.9, ], # 0.9, 0.7, 0.5 LARGER 0.9 SEEMS TO LEAD TO MEAN-VALUE FORECASTS!!!!!!!!!!!!!!!!!!!!
             'CR': [ 0.7 ], # 0.7
             'mutation_type': [ 'random', ], # random2 weekend
             'NPI': [ 4 ], # 4
             'track_len': [ 2 ], # min 2 
-            'tol': [ 0 ], # -1e-3,
-            'train_size': [  (1,False,1,None),
-                                # (0.5, True, 1000, None), 
-                           ], # 0.7 train_data_size, run_val, val_gen_min, val_metric
-            'init': [  ('normal',10,1),
-                      ('uniform',-5,10),
-                       ('halton',None,None), # weekday
+            'tol': [ -1e-3, ], # -1e-3,
+            'init': [ # ('normal',10,1),
+                      #('uniform',-5,10),
+                      # ('halton',None,None), # weekday
                        ('latin',None,10), # weekend
                       #  ('skunk',None,None),
                     ], 
-            'refine_param': [  (10,10,10,False), 
-                             # (10,10,10,True), 
+            'refine_param': [# (10,10,10,False), 
+                              (10,10,10,True), 
                              # (10,10,10,True), 
                                 ], # (100,2,10) refine_gen_start, refine_current_start, refine_mod_start, refine_random
                             # return_combo_list(ffs, 2),
@@ -59,7 +56,7 @@ def main(argv=None):
             'F_delta': [ 0.01 ], #
             'lowerF': [ 0.1, ], # 0.1
             'upperF': [ 0.9, ], # 0.9
-            'mutation_refine': [ 'default', ], # 'default', 'variable', 'weight_variable',
+            'mutation_refine': [ 'default', ], # 'default', 'variable', 'dimension_variable', 'candidate_variable', 'full_variable',
             'CR_refine': [ 'default', ], # 'default', 'variable', 'weight_variable', 
             'CR_delta': [0.1], # 
             'lowerCR': [ 0.1 ], # 0.1
@@ -72,14 +69,11 @@ def main(argv=None):
                              #  (False, True, True),
                             ],
                           # return_combo_list([True, False], 3),
-            'bootstrapping': [  (True, 1,), 
-                               # (False, 1),
-                        ], # bootstrap samples for each index training. needed for bagging and bumping. optional for standard and bma.
             'exhaustive': [  (False,20,6), 
                             # (True,50,6), 
                                  ], # run_exh, current, subset
             'val_sample': [ 4, ], # bma val minimum indices
-            'd': [ 10, ], # dimension
+            'd': [ 5, ], # dimension
             'test_function': [ 'rosenbrock' ], # dimension
     }
     
@@ -104,37 +98,35 @@ def main(argv=None):
         NPI = param[5]
         track_length = param[6]
         tol = param[7]
-        train_size = param[8]
-        init = param[9]
-        refine_param = param[10]
-        F_refine = param[11]
-        F_delta = param[12]
-        lowerF = param[13]
-        upperF = param[14]
-        mutation_refine = param[15]
-        CR_refine = param[16]
-        CR_delta = param[17]
-        lowerCR = param[18]
-        upperCR = param[19]
-        return_method = param[20]                              
-        error_metric = param[21]
-        run_enh = param[22]       
-        bootstrapping = param[23]
-        exhaustive_ = param[24]
-        val_sample_ = param[25]
-        d_ = param[26]
-        test_function_ = param[27]
+        init = param[8]
+        refine_param = param[9]
+        F_refine = param[10]
+        F_delta = param[11]
+        lowerF = param[12]
+        upperF = param[13]
+        mutation_refine = param[14]
+        CR_refine = param[15]
+        CR_delta = param[16]
+        lowerCR = param[17]
+        upperCR = param[18]
+        return_method = param[19]                              
+        error_metric = param[20]
+        run_enh = param[21]       
+        exhaustive_ = param[22]
+        val_sample_ = param[23]
+        d_ = param[24]
+        test_function_ = param[25]
 
         DE_model = DEModelClass(NP, G, F, CR, mutation_type, tol, NPI, init, track_length,
                                 F_refine, F_delta, lowerF, upperF,
                                 mutation_refine, refine_param, 
                                 CR_refine, CR_delta, lowerCR, upperCR,
-                                return_method, error_metric, run_enh, bootstrapping, exhaustive_, val_sample_,
+                                return_method, error_metric, run_enh, exhaustive_, val_sample_,
                                 run, d_, test_function_)
 
         # run DE and return resultant best-fitting candidate
 
-        optimum_point, gen_points, val_points, dfs = differential_evolution_vector(DE_model, train_size)
+        optimum_point, gen_points, val_points, dfs = differential_evolution_vector(DE_model)
 
         # model selection
 
@@ -177,7 +169,7 @@ def main(argv=None):
            'F_delta', 'lowerF', 'upperF', 'F_refine', 'refine_param', 
            'mutation_refine', 'lowerCR', 'upperCR', 'CR_refine', 'CR_delta', 
            'return_method', 'track_len', 'error_metric', 'run_enh',  'init', 'exh', 'val_sample',
-           'bootstrapping', 'c'] # add neurons for 1 layer ADD BACK 'c'
+           'c'] # add neurons for 1 layer ADD BACK 'c'
     key_cols = ['Minimum']
     
     # across each group and index c

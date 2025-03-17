@@ -51,7 +51,7 @@ class DEModelClass():
                     F_refine, F_delta, lowerF, upperF,
                     mutation_refine, refine_param, 
                     CR_refine, CR_delta, lowerCR, upperCR,
-                    return_method, error_metric, run_enh, bootstrapping, exhaustive, val_sample,
+                    return_method, error_metric, run_enh, exhaustive, val_sample,
                     run, d, test_function):
         
         self.NP = NP
@@ -81,7 +81,6 @@ class DEModelClass():
         self.return_method = return_method        
         self.error_metric = error_metric
         self.run_enh = run_enh
-        self.bootstrapping = bootstrapping
         self.exhaustive = exhaustive
         self.fitness = fitness
         self.return_F_CR = return_F_CR
@@ -95,10 +94,8 @@ class DEModelClass():
         self.perform_svd_log = perform_svd_log
         self.perform_clustering = perform_clustering
         self.perform_search = perform_search
-        self.DENN_forecast = DENN_forecast
         self.plot = plot
         self.skunk_initial = skunk_initial
-        self.return_bp_weights = return_bp_weights
         self.exhaustive_mutation = exhaustive_mutation
         self.val_sample = val_sample
         self.run = run
@@ -2228,31 +2225,33 @@ def return_F_CR(flag, lowerF, upperF, F_delta, F_, d, NP):
         movie_list = np.arange(lowerF,upperF,F_delta)
         movie_list = np.round(movie_list,2)
         movie_list = list(movie_list)
-
-        F_W0 = random.choice(movie_list)
-        F_W1 = F_W0
-        F_W2 = F_W0
-        F_W3 = F_W0
-
-        F_b0 = F_W0
-        F_b1 = F_W0
-        F_b2 = F_W0
-        F_b3 = F_W0
+        Fv = random.choice(movie_list)
+        F = np.full((d, NP), Fv)
     
-    if flag == 'weight_variable':
+    if flag == 'dimension_variable':
         movie_list = np.arange(lowerF,upperF,F_delta)
         movie_list = np.round(movie_list,2)
         movie_list = list(movie_list)
+        Fiv = random.choices(movie_list, k=d)
+        Fiv = np.array(Fiv)
+        Fiv = Fiv.reshape(len(Fiv),1)
+        F = np.full((d, NP), Fiv)
 
-        F_W0 = random.choice(movie_list)
-        F_W1 = random.choice(movie_list)
-        F_W2 = random.choice(movie_list)
-        F_W3 = random.choice(movie_list)
+    if flag == 'candidate_variable':
+        movie_list = np.arange(lowerF,upperF,F_delta)
+        movie_list = np.round(movie_list,2)
+        movie_list = list(movie_list)
+        Fiv = random.choices(movie_list, k=NP)
+        Fiv = np.array(Fiv)
+        #Fiv = Fiv.reshape(len(Fiv),1)
+        F = np.full((d, NP), Fiv)
+        boo=False
 
-        F_b0 = random.choice(movie_list)
-        F_b1 = random.choice(movie_list)
-        F_b2 = random.choice(movie_list)
-        F_b3 = random.choice(movie_list)
+    if flag == 'full_variable':
+        movie_list = np.arange(lowerF,upperF,F_delta)
+        movie_list = np.round(movie_list,2)
+        movie_list = list(movie_list)
+        F = np.random.choice(movie_list, size=(d, NP))
 
     return F
 
@@ -3829,59 +3828,15 @@ def write_weights(W0_, W1_, W2_, W3_, b0_, b1_, b2_, b3_,r, name, X_, y_):
         pd.DataFrame(y_).to_excel(writer, sheet_name = 'y', index=False)
     return True
 
-def return_bp_weights(param, X_train,y_train):
-    
-    hidden_layer_sizes_ = param[0]
-    activation_ = param[1]
-    solver_ = param[2]
-    alpha_ = param[3]
-    learning_rate_ = param[4]
-    max_iter_ = param[5]
-    batch_size_ = param[6]
-    validation_fraction_ = param[7]
-    
-    gs = MLPRegressor(hidden_layer_sizes=hidden_layer_sizes_,
-                      activation=activation_,
-                      solver=solver_,
-                      alpha=alpha_,
-                      learning_rate=learning_rate_,
-                      max_iter=max_iter_,
-                      random_state=42,
-                      batch_size=batch_size_,
-                      early_stopping=True,
-                      validation_fraction=validation_fraction_             
-                      )
-
-    gs.fit(X_train, y_train.ravel() )
-    
-    W0g = gs.coefs_[0]
-    W1g = gs.coefs_[1]
-    W2g = gs.coefs_[2]
-    W3g = gs.coefs_[3]
-    
-    b0g = gs.intercepts_[0]
-    b1g = gs.intercepts_[1]
-    b2g = gs.intercepts_[2]
-    b3g = gs.intercepts_[3]
-    
-    b0g = b0g.reshape(len(b0g),1).T
-    b1g = b1g.reshape(len(b1g),1).T
-    b2g = b2g.reshape(len(b2g),1).T
-    b3g = b3g.reshape(len(b3g),1).T
-    
-    bp = W0g,W1g,W2g,W3g,b0g,b1g,b2g,b3g
-    
-    return bp
-
 def return_refine_count(df):
     cols = ['ClusterCount', 'LocalCount', 'n_SVD_Count', 'scalar_SVD_Count', 'exp_SVD_Count']
-    df.loc[(df['clustering_score'] > 0) & (df['clustering_score'] <= df['TrainRMSE']), 'ClusterCount'] = 1
-    df.loc[(df['local_score'] > 0) & (df['local_score'] <= df['TrainRMSE']), 'LocalCount'] = 1
+    df.loc[(df['clustering_score'] > 0) & (df['clustering_score'] <= df['TrainMin']), 'ClusterCount'] = 1
+    df.loc[(df['local_score'] > 0) & (df['local_score'] <= df['TrainMin']), 'LocalCount'] = 1
 
-    df.loc[(df['svd_value'] > 0) & (df['svd_value'] <= df['TrainRMSE']), 'n_SVD_Count'] = 1
-    df.loc[(df['s_scalar_value'] > 0) & (df['s_scalar_value'] <= df['TrainRMSE']), 'scalar_SVD_Count'] = 1
-    df.loc[(df['s_exp_value'] > 0) & (df['s_exp_value'] <= df['TrainRMSE']), 'exp_SVD_Count'] = 1
-    #df.loc[(df['s_log_value'] > 0) & (df['s_log_value'] <= df['TrainRMSE']), 'log_SVD_Count'] = 1
+    df.loc[(df['svd_value'] > 0) & (df['svd_value'] <= df['TrainMin']), 'n_SVD_Count'] = 1
+    df.loc[(df['s_scalar_value'] > 0) & (df['s_scalar_value'] <= df['TrainMin']), 'scalar_SVD_Count'] = 1
+    df.loc[(df['s_exp_value'] > 0) & (df['s_exp_value'] <= df['TrainMin']), 'exp_SVD_Count'] = 1
+    #df.loc[(df['s_log_value'] > 0) & (df['s_log_value'] <= df['TrainMin']), 'log_SVD_Count'] = 1
 
     final = df.groupby(['Run', 'NP'])[cols].sum()
     return final
@@ -4777,7 +4732,7 @@ if False:
 # key_col = 'layers'
 # keys = df[key_col].drop_duplicates().tolist()
                      
-# c1 = 'TrainRMSE'
+# c1 = 'TrainMin'
 # c2 = '2023_RMSE'
 
 # df_list = []
