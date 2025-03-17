@@ -358,24 +358,6 @@ def crossover_vector(NP_indices, y, x, CR):
             else:
                 z_[i,j] = x_[i,j].copy()
 
-    # OLD
-
-    # for e in NP_indices:
-    #     x_ = x[e].copy()
-    #     y_ = y[e].copy()
-    #     z_ = z[e].copy()
-
-    #     m,n = x_.shape
-
-    #     for i in np.arange(0,m):
-    #         k = np.random.choice(np.arange(0,n),) # think this should be n
-    #         for j in np.arange(0,n):
-    #             if (random.uniform(0, 1) <= CR[i,j] or j == k): # think this should be j
-    #                 z_[i,j] = y_[i,j].copy()
-    #             else:
-    #                 z_[i,j] = x_[i,j].copy()
-    #     z[e] = z_.copy()
-
     return z_
 
 
@@ -506,43 +488,6 @@ def create_mutation_vector(x_, m, n1, n2, n3, F_one, F_two, F_three):
     
     return F_1, F_2, F_3
 
-def split_candidate(x_, m, n1, n2, n3):
-
-    w0 = m*n1
-    W0 = x_[0:w0]
-    W0 = W0.reshape((m,n1))
-
-    w1 = w0 + n1*n2
-    W1 = x_[w0:w1]
-    W1 = W1.reshape((n1,n2))
-
-    w2 = w1 + n2*n3
-    W2 = x_[w1:w2]
-    W2 = W2.reshape((n2,n3))
-
-    w3 = w2 + n3
-    W3 = x_[w2:w3]
-    W3 = W3.reshape((n3,1))
-
-    b0 = w3 + n1
-    B0 = x_[w3:b0]
-    B0 = B0.reshape((n1,1)).T
-
-    b1 = b0 + n2
-    B1 = x_[b0:b1]
-    B1 = B1.reshape((n2,1)).T
-
-    b2 = b1 + n3
-    B2 = x_[b1:b2]
-    B2 = B2.reshape((n3,1)).T
-
-    b3 = b2 + 1
-    B3 = x_[b2:b3]
-    B3 = B3.reshape((1,1)).T
-
-    candidates = W0, W1, W2, W3, B0, B1, B2, B3
-    
-    return candidates
 
 def generate_initial_population(d, NP, NP_indices, init):
     
@@ -583,10 +528,6 @@ def generate_initial_population(d, NP, NP_indices, init):
     #         mean_ = 0
     #         sigma = np.sqrt(2.0) * np.sqrt(2 / (a+b))
     #         x = np.random.normal(loc=mean_, scale=sigma, size=(a,b))
-    #     if itype == 'uniform':
-    #         #x = np.ones((a,b)) * np.random.uniform(low=l, high=h)
-    #         r = np.sqrt(2.0) * np.sqrt(6 / (a+b))
-    #         x = np.random.uniform(low=-r, high=r, size=(a,b))
     #     candidates[j] = x
     
     return x
