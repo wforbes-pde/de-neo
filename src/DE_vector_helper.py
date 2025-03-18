@@ -66,19 +66,18 @@ class DEModelClass():
         self.error_metric = error_metric
         self.run_enh = run_enh
         self.exhaustive = exhaustive
-        self.fitness = fitness
         self.return_F_CR = return_F_CR
         self.return_mutation_list = return_mutation_list
         self.return_mutation_type = return_mutation_type
         self.crossover_component = crossover_component
         self.return_running_avg_residual = return_running_avg_residual
         self.perform_svd_filter = perform_svd_filter
+        self.perform_svd_scalar = perform_svd_scalar
         self.perform_svd_exp = perform_svd_exp
         self.perform_svd_log = perform_svd_log
         self.perform_clustering = perform_clustering
         self.perform_search = perform_search
         self.plot = plot
-        self.skunk_initial = skunk_initial
         self.exhaustive_mutation = exhaustive_mutation
         self.val_sample = val_sample
         self.run = run
@@ -87,64 +86,6 @@ class DEModelClass():
         if self.test_function in ['rosenbrock']:
             self.analytical = rosenbrock_eval
 
-
-class NNClass():
-    
-    def __init__(self, num_layers, n1, n2, n3, m, activation_, regularization_):
-        
-        activation, alpha = activation_
-        reg_type, reg_alpha = regularization_
-
-        self.num_layers = num_layers
-        self.n1 = n1
-        self.n2 = n2
-        self.n3 = n3
-        self.activation = activation_
-        self.activation_function = activation
-        self.alpha = alpha
-        self.regularization_ = regularization_
-        self.reg_type = reg_type
-        self.reg_alpha = reg_alpha
-
-        # feature dimension
-
-        self.m = m
-
-        # activation function
-
-        if activation == 'lrelu':
-            self.activation_function = lrelu
-
-        if activation == 'relu':
-            self.activation_function = relu
-
-        if activation == 'elu':
-            self.activation_function = elu
-
-        if activation == 'tanh':
-            self.activation_function = np.tanh
-
-        if activation == 'logistic':
-            self.activation_function = expit
-    
-    def set_ytrain_std(self, std_):
-        self.ytrain_std = std_
-
-    def set_phase(self, phase):
-        self.phase = phase
-
-
-def rosenbrock(p, d): # used in selection operator
-    # population component wise
-    p = p.reshape(len(p),1)
-    x_i = p[0:d-1,:] # range is 1 to d-1
-    x_pi = p[1:d,:] # range is 2 to d
-
-    a = (x_i-1)**2
-    b = 100*(x_pi - x_i**2)**2
-    c = a + b
-    f = np.sum(c, axis=0)
-    return f
 
 def rosenbrock_eval(p, d):
     # candidate vector wise    
@@ -156,181 +97,6 @@ def rosenbrock_eval(p, d):
     c = a + b
     f = np.sum(c, axis=0)
     return f
-
-
-def fitness(x, W0, W1, W2, W3, b0, b1, b2, b3, y_, n_, error_metric, reg_flag, NN_model):
-    
-    reg1, reg2, reg3 = reg_flag
-    # feed forward
-
-    yp = feed_forward(x, W0, W1, W2, W3, b0, b1, b2, b3, n_, NN_model)
-    yp_std = np.std(yp,axis=0)[0]
-    
-    # error function
-
-    weights = None
-    base_score = return_error_metric(y_, yp, error_metric, weights)
-
-    # DE candidate regularization
-
-    reg1_ratio = 0
-    reg2_ratio = 0
-    reg3_ratio = 0
-
-    if reg1:
-        train_std_threshold = 0.5 # 0.5 ??? was 0.1
-        if yp_std < NN_model.ytrain_std*train_std_threshold:
-            reg1_ratio = 0.2
-
-    if reg2:
-        threshold, scalar = (0.5,2) # ??? 0.2,2
-        d = np.diff(yp, axis=0)
-        e = d[ np.abs(d) <= threshold].copy()
-        counts = len(e)
-        zero_counts = np.count_nonzero(yp==0)
-        penalty = (counts + zero_counts) * scalar
-        reg2_ratio = penalty/n_ 
-
-    if reg3:    
-        yp1 = np.array(yp).ravel()
-        peaks, _ = find_peaks(yp1, height=np.max(y_)*2)
-        peaks_count = len(peaks)
-        if peaks_count > 0:
-            reg3_ratio = 1
-    
-    score = base_score * (1 + reg1_ratio + reg2_ratio + reg3_ratio)
-
-    # add weight regularization to prevent overfitting
-
-    if NN_model.phase == 'training':
-        if NN_model.reg_type == 'l1':
-            ralpha = 1
-            reg = (np.linalg.norm(W0,ralpha) + np.linalg.norm(W1,ralpha) + np.linalg.norm(W2,ralpha) + np.linalg.norm(W3,ralpha)) * NN_model.reg_alpha
-        if NN_model.reg_type == 'l2':
-            ralpha = 2
-            reg = (np.linalg.norm(W0,ralpha) + np.linalg.norm(W1,ralpha) + np.linalg.norm(W2,ralpha) + np.linalg.norm(W3,ralpha)) * NN_model.reg_alpha
-        if NN_model.reg_type is None:
-            reg = 0
-        score = score + reg
-
-    if NN_model.phase == 'testing':
-        score = base_score
-        
-    return score, yp
-
-def feed_forward(x, W0, W1, W2, W3, b0, b1, b2, b3, n_, NN_model):
-
-    if NN_model.num_layers == 3:
-
-        # convert bias vectors into bias matrices
-
-        b0 = np.repeat(b0, n_, axis=0)
-        b1 = np.repeat(b1, n_, axis=0)
-        b2 = np.repeat(b2, n_, axis=0)
-        b3 = np.repeat(b3, n_, axis=0)
-    
-        s1 = x@W0 + b0
-        z1 = NN_model.activation_function(s1, NN_model.alpha)
-
-        s2 = z1@W1 + b1
-        z2 = NN_model.activation_function(s2, NN_model.alpha)
-
-        s3 = z2@W2 + b2
-        z3 = NN_model.activation_function(s3, NN_model.alpha)
-
-        yp = NN_model.activation_function(z3@W3+b3, NN_model.alpha)
-
-    return yp
-
-def vary_error_weights(x, W0, W1, W2, W3, b0, b1, b2, b3, y_, 
-                 n_, 
-                 error_metric, reg_flag, error_weight, i,
-                 NN_model):
-    
-    # convert bias vectors into bias matrices
-
-    #W3 = np.repeat(W3, n_, axis=0)
-
-    b0 = np.repeat(b0, n_, axis=0)
-    b1 = np.repeat(b1, n_, axis=0)
-    b2 = np.repeat(b2, n_, axis=0)
-    b3 = np.repeat(b3, n_, axis=0)
-
-    # b0 = np.repeat(b0, n_, axis=)
-    # b1 = np.repeat(b1, n_, axis=1)
-    # b2 = np.repeat(b2, n_, axis=1)
-    # b3 = np.repeat(b3, n_, axis=1)
-
-    # b0 = b0.T
-    # b1 = b1.T
-    # b2 = b2.T
-    # b3 = b3.T
-    
-    # default weights
-    # change with other conditions
-    
-    weights = None
-    
-    if error_weight is None:
-        score = return_error_metric(y_, yp, error_metric, weights)
-
-    # testing
-
-    if error_weight is not None:
-        keys = list(error_weight.keys())
-        if len(keys) == 2:
-            m1 = keys[0]
-            w1 = error_weight[m1]
-
-            m2 = keys[1]
-            w2 = error_weight[m2]
-
-            score1 = return_error_metric(y_, yp, m1, weights)
-            score2 = return_error_metric(y_, yp, m2, weights)
-
-            score = score1*w1 + score2*w2
-
-        if len(keys) == 3:
-
-            m1 = keys[0]
-            w1 = error_weight[m1]
-
-            m2 = keys[1]
-            w2 = error_weight[m2]
-
-            m3 = keys[2]
-            w3 = error_weight[m3]
-
-            score1 = return_error_metric(y_, yp, m1, weights)
-            score2 = return_error_metric(y_, yp, m2, weights)
-            score3 = return_error_metric(y_, yp, m3, weights)
-
-            score = score1*w1 + score2*w2 + score3*w3
-            #logging.info('score3')
-
-        if len(keys) == 4:
-
-            m1 = keys[0]
-            w1 = error_weight[m1]
-
-            m2 = keys[1]
-            w2 = error_weight[m2]
-
-            m3 = keys[2]
-            w3 = error_weight[m3]
-
-            m4 = keys[3]
-            w4 = error_weight[m4]
-
-            score1 = return_error_metric(y_, yp, m1, weights)
-            score2 = return_error_metric(y_, yp, m2, weights)
-            score3 = return_error_metric(y_, yp, m3, weights)
-            score4 = return_error_metric(y_, yp, m4, weights)
-
-            score = score1*w1 + score2*w2 + score3*w3 + score4*w4
-            #logging.info('score4')
-
-    return score, yp
 
 def return_error_metric(y_, yp, error_metric, weights):
 
@@ -360,17 +126,6 @@ def return_error_metric(y_, yp, error_metric, weights):
     if error_metric == 'msle':
         score = mean_squared_log_error(y_, yp, squared=True, sample_weight=weights)
 
-    if error_metric == 'rae':
-        score = c_error_metric.rae_loss(y_, yp, size)
-
-    if error_metric == 'rse':
-        score = c_error_metric.rse_loss(y_, yp, size)
-
-    if error_metric == 'log_cosh':
-        y_ = y_.reshape(len(y_),1)
-        yp = torch.tensor(yp)
-        y_ = torch.tensor(y_)
-        score = log_cosh_loss(yp, y_)
 
     if error_metric == 'med_abs':
         score = median_absolute_error(y_, yp)
@@ -382,57 +137,6 @@ def return_error_metric(y_, yp, error_metric, weights):
         score = 1-r2_score(y_, yp)
 
     return score
-
-def log_cosh_loss(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-    def _log_cosh(x: torch.Tensor) -> torch.Tensor:
-        return x + torch.nn.functional.softplus(-2. * x) - math.log(2.0)
-    
-    val = torch.mean(_log_cosh(y_pred - y_true))
-    return val.item()
-
-class LogCoshLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(
-        self, y_pred: torch.Tensor, y_true: torch.Tensor
-    ) -> torch.Tensor:
-        return log_cosh_loss(y_pred, y_true)
-
-def log_cosh(true, pred):
-    logcosh = np.log(np.cosh(pred - true))
-    logcosh_loss = np.sum(logcosh)
-    return logcosh_loss[0]
-
-def relative_root_mean_squared_error(true, pred):
-    num = np.sum(np.square(true - pred))
-    den = np.sum(np.square(pred))
-    squared_error = num/den
-    rrmse_loss = np.sqrt(squared_error)
-    return rrmse_loss
-
-def normalized_root_mean_squared_error(true, pred, weights):
-    rmse = mean_squared_error(true, pred, squared=False, sample_weight=weights)    
-    #nrmse_loss = rmse/np.std(pred)
-    #nrmse_loss = rmse/np.mean(pred)
-    #nrmse_loss = rmse/np.max(pred)
-    #nrmse_loss = rmse/(np.max(pred)-np.min(pred))
-    nrmse_loss = rmse/ iqr(pred)
-    return nrmse_loss
-
-def relative_absolute_error(true, pred):
-    true_mean = np.mean(true)
-    squared_error_num = np.sum(np.abs(true - pred))
-    squared_error_den = np.sum(np.abs(true - true_mean))
-    rae_loss = squared_error_num / squared_error_den
-    return rae_loss
-
-def relative_squared_error(true, pred):
-    true_mean = np.mean(true)
-    squared_error_num = np.sum(np.square(true - pred))
-    squared_error_den = np.sum(np.square(true - true_mean))
-    rse_loss = squared_error_num / squared_error_den
-    return rse_loss
 
 
 def elu(w, alpha):
@@ -650,187 +354,9 @@ def random_uniform(xgp, samples, NP_indices, DE_model):
 
     return local_array
 
-def random_uniform_delta(rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3, samples, NP_indices,
-                   delta_X, e):
-
-    lgp_W0, lgp_W1, lgp_W2, lgp_W3, lgp_b0, lgp_b1, lgp_b2, lgp_b3 = {}, {}, {}, {}, {}, {}, {}, {}
-    X_W0, X_W1, X_W2, X_W3, X_b0, X_b1, X_b2, X_b3 = delta_X
-
-    NP = len(NP_indices)
-    total = samples*NP
-    low_ = -1e-1
-    high_ = 1e-1
-
-    for w in np.arange(0,total):
-        #h=w%NP
-        m,n = rgp_W0[0].shape
-        X_W0 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        lgp_W0[w] = rgp_W0[e].copy() + X_W0
-
-        m,n = rgp_W1[0].shape
-        lgp_W1[w] = rgp_W1[e].copy() + X_W1
-
-        m,n = rgp_W2[0].shape
-        lgp_W2[w] = rgp_W2[e].copy() + X_W2
-
-        m,n = rgp_W3[0].shape
-        lgp_W3[w] = rgp_W3[e].copy() + X_W3
-
-        m,n = rgp_b0[0].shape
-        lgp_b0[w] = rgp_b0[e].copy() + X_b0
-
-        m,n = rgp_b1[0].shape
-        lgp_b1[w] = rgp_b1[e].copy() + X_b1
-
-        m,n = rgp_b2[0].shape
-        lgp_b2[w] = rgp_b2[e].copy() + X_b2
-
-        m,n = rgp_b3[0].shape
-        lgp_b3[w] = rgp_b3[e].copy() + X_b3
-
-    local = lgp_W0, lgp_W1, lgp_W2, lgp_W3, lgp_b0, lgp_b1, lgp_b2, lgp_b3 
-
-    return local
-
-def random_uniform_new(xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3, samples, NP_indices,
-                       x_dict, y_dict, DE_model, reg_flag, n_,
-                       gen_fitness, skunk_start, skunk_mod, bootstrapping, NN_model):
-
-    rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3 = {}, {}, {}, {}, {}, {}, {}, {}
-    pgp_W0, pgp_W1, pgp_W2, pgp_W3, pgp_b0, pgp_b1, pgp_b2, pgp_b3 = {}, {}, {}, {}, {}, {}, {}, {}
-
-    NP = len(NP_indices)
-    total = samples*NP
-    low_ = skunk_start
-    high_ = skunk_mod
-
-    locale = None
-        
-    if not bootstrapping:
-        n_ = len(y_dict)
-        X_train = x_dict
-        y_train = y_dict
-    
-    # perturbation around candidates
-
-    for e in np.arange(0,total):
-        h=e%NP
-        m,n = xgp_W0[0].shape
-        X_W0 = np.random.uniform(low=low_, high=high_, size=(m,n))        
-        rgp_W0 = xgp_W0[h].copy() + X_W0
-
-        m,n = xgp_W1[0].shape
-        X_W1 = np.random.uniform(low=low_, high=high_, size=(m,n))        
-        rgp_W1 = xgp_W1[h].copy() + X_W1
-
-        m,n = xgp_W2[0].shape
-        X_W2 = np.random.uniform(low=low_, high=high_, size=(m,n))        
-        rgp_W2 = xgp_W2[h].copy() + X_W2
-
-        m,n = xgp_W3[0].shape
-        X_W3 = np.random.uniform(low=low_, high=high_, size=(m,n))        
-        rgp_W3 = xgp_W3[h].copy() + X_W3
-
-        m,n = xgp_b0[0].shape
-        X_b0 = np.random.uniform(low=low_, high=high_, size=(m,n))        
-        rgp_b0 = xgp_b0[h].copy() + X_b0
-
-        m,n = xgp_b1[0].shape
-        X_b1 = np.random.uniform(low=low_, high=high_, size=(m,n))        
-        rgp_b1 = xgp_b1[h].copy() + X_b1
-
-        m,n = xgp_b2[0].shape
-        X_b2 = np.random.uniform(low=low_, high=high_, size=(m,n))        
-        rgp_b2 = xgp_b2[h].copy() + X_b2
-
-        m,n = xgp_b3[0].shape
-        X_b3 = np.random.uniform(low=low_, high=high_, size=(m,n))
-        rgp_b3 = xgp_b3[h].copy() + X_b3
-    
-        l_errors = []
-        
-        if bootstrapping:
-            X_train = x_dict[h]
-            y_train = y_dict[h]
-            n_ = len(y_train)
-
-        l_fit, rv = fitness(X_train, rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3,
-                                y_train, n_, DE_model.error_metric, reg_flag, NN_model)
-        l_errors.append(l_fit)        
-        
-        # perturbation around perturbed candidates based on fitness
-        
-        delta_X = X_W0, X_W1, X_W2, X_W3, X_b0, X_b1, X_b2, X_b3
-        
-        if l_fit < gen_fitness[h]:
-            logging.info(f'l_fit {l_fit} gen fit {gen_fitness[h]} index {h}')
-            gen_fitness[h] = l_fit
-            xgp_W0[h], xgp_W1[h], xgp_W2[h], xgp_W3[h], xgp_b0[h], xgp_b1[h], xgp_b2[h], xgp_b3[h] = rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3
-        
-    pert = xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3,
-    
-    return pert
-
-
-def random_normal(xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3, samples, NP_indices):
-
-    rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3 = {}, {}, {}, {}, {}, {}, {}, {}
-
-    NP = len(NP_indices)
-    total = samples*NP
-
-    for e in np.arange(0,total):
-        h=e%NP
-        std = 0.1
-        
-        m,n = xgp_W0[0].shape
-        mean_ = xgp_W0[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_W0[e] = xgp_W0[h].copy() + X
-
-        m,n = xgp_W1[0].shape
-        mean_ = xgp_W1[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_W1[e] = xgp_W1[h].copy() + X
-
-        m,n = xgp_W2[0].shape
-        mean_ = xgp_W2[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_W2[e] = xgp_W2[h].copy() + X
-
-        m,n = xgp_W3[0].shape
-        mean_ = xgp_W3[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_W3[e] = xgp_W3[h].copy() + X
-
-        m,n = xgp_b0[0].shape
-        mean_ = xgp_b0[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_b0[e] = xgp_b0[h].copy() + X
-
-        m,n = xgp_b1[0].shape
-        mean_ = xgp_b1[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_b1[e] = xgp_b1[h].copy() + X
-
-        m,n = xgp_b2[0].shape
-        mean_ = xgp_b2[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_b2[e] = xgp_b2[h].copy() + X
-
-        m,n = xgp_b3[0].shape
-        mean_ = xgp_b3[h]
-        X = np.random.normal(loc=mean_, scale=std, size=(m,n))
-        rgp_b3[e] = xgp_b3[h].copy() + X
-
-    local = rgp_W0, rgp_W1, rgp_W2, rgp_W3, rgp_b0, rgp_b1, rgp_b2, rgp_b3
-
-    return local
 
 def svd_space(M, alpha):
 
-    # M = weight matrix
-    # alpha = percent of singular values to filter - unused!!
     # alpha = how many singular values to exclude
 
     U, S, V_T = svd(M)
@@ -1045,10 +571,6 @@ def model_selection(gen_points, y_,return_method, c,NN_model, errors):
     xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
     n_ = len(y_)
 
-    # # scaling
-    # scaler.fit(X_)
-    # X_ = scaler.transform(X_)
-
     # bumping should be evaluated on the original training dataset
 
     if return_method == 'bumping':
@@ -1245,41 +767,6 @@ def return_F(key, F_one, F_two, F_three):
     
     return F_1, F_2, F_3
 
-# def mutation(NP, NP_indices, F_one, F_two, F_three, x_weight, MCMC, gen_best_x_weight, mutation_type, key):
-
-#     F_1, F_2, F_3 = return_F(key, F_one, F_two, F_three)
-
-#     if mutation_type == 'random':
-
-#         y = mutate(NP, NP_indices, F_1, x_weight, MCMC)
-
-#     # DE/rand/2 needs minimum NP = 6
-
-#     if mutation_type == 'random2':
-
-#         y = mutate_two(NP, NP_indices, F_1, F_2, x_weight, MCMC)
-
-#     # DE/rand/3 needs minimum NP = 8
-
-#     if mutation_type == 'random3':
-
-#         y = mutate_three(NP, NP_indices, F_1, F_2, F_3, x_weight, MCMC)
-    
-#     # DE/best/123
-
-#     if mutation_type in ['best']:
-
-#         y = mutate_best(NP, NP_indices, F_1, gen_best_x_weight, x_weight, MCMC)
-
-#     if mutation_type in ['best2']:
-
-#         y = mutate_best_two(NP, NP_indices, F_1, F_2, gen_best_x_weight, x_weight, MCMC)
-
-#     if mutation_type in ['best3']:
-
-#         y = mutate_best_three(NP, NP_indices, F_1, F_2, F_3, gen_best_x_weight, x_weight, MCMC)
-
-#     return y
 
 def mutation_vector(NP, NP_indices, F_1, F_2, F_3, x_weight, MCMC, gen_best_x_weight, mutation_type):
 
@@ -1859,52 +1346,37 @@ def exhaustive_mutation(run, i, mutation_list, mutation_type, NP_indices, X_trai
 
     return em_weights
 
-def skunk_initial(a, b, NP_indices, key, DE_model):
+# def selection_vector(NP_indices, fitness, error_metric_dict, X_train, y_train, gen, mindex,
+#               reg_flag, error_metric_, error_weight, m, n1, n2, n3,
+#               x, z):
     
-    std = np.sqrt(2.0 / a) # np.sqrt(2.0 / a)
-    mean_ = 0 # 0
+#     # determine survival of target or trial vector
+#     # into the next generation
+#     i_accept = 0
+#     n_ = len(y_train)
 
-    candidates = {}
+#     for j in NP_indices:
 
-    for j in NP_indices:
-        x = np.zeros((a*b,1))
-        #x[j%a*b] = np.random.uniform(low=l, high=h)
-        x[j%a*b] = np.random.normal(loc=mean_, scale=std)
-        candidates[j] = x.reshape((a,b))
+#         if j == mindex:
+#             error_metric = error_metric_
+#             #logging.info(f'gen {gen} is this working? {error_metric} {mindex}')
+#         else:
+#             error_metric = error_metric_dict[j]
+#         xcandidates = split_candidate(x[j], m, n1, n2, n3)
+#         xW0, xW1, xW2, xW3, xB0, xB1, xB2, xB3 = xcandidates
 
-    return candidates
-
-def selection_vector(NP_indices, fitness, error_metric_dict, X_train, y_train, gen, mindex,
-              reg_flag, error_metric_, error_weight, m, n1, n2, n3,
-              x, z):
-    
-    # determine survival of target or trial vector
-    # into the next generation
-    i_accept = 0
-    n_ = len(y_train)
-
-    for j in NP_indices:
-
-        if j == mindex:
-            error_metric = error_metric_
-            #logging.info(f'gen {gen} is this working? {error_metric} {mindex}')
-        else:
-            error_metric = error_metric_dict[j]
-        xcandidates = split_candidate(x[j], m, n1, n2, n3)
-        xW0, xW1, xW2, xW3, xB0, xB1, xB2, xB3 = xcandidates
-
-        zcandidates = split_candidate(z[j], m, n1, n2, n3)
-        zW0, zW1, zW2, zW3, zB0, zB1, zB2, zB3 = zcandidates
+#         zcandidates = split_candidate(z[j], m, n1, n2, n3)
+#         zW0, zW1, zW2, zW3, zB0, zB1, zB2, zB3 = zcandidates
         
-        zfit, zyb = fitness(X_train, zW0, zW1, zW2, zW3, zB0, zB1, zB2, zB3, y_train, n_, error_metric, reg_flag, error_weight)
-        xfit, xyb = fitness(X_train, xW0, xW1, xW2, xW3, xB0, xB1, xB2, xB3, y_train, n_, error_metric, reg_flag, error_weight)
+#         zfit, zyb = fitness(X_train, zW0, zW1, zW2, zW3, zB0, zB1, zB2, zB3, y_train, n_, error_metric, reg_flag, error_weight)
+#         xfit, xyb = fitness(X_train, xW0, xW1, xW2, xW3, xB0, xB1, xB2, xB3, y_train, n_, error_metric, reg_flag, error_weight)
 
-        if zfit <= xfit:
+#         if zfit <= xfit:
             
-            x[j] = z[j].copy()
-            i_accept = i_accept + 1
+#             x[j] = z[j].copy()
+#             i_accept = i_accept + 1
 
-    return x, i_accept
+#     return x, i_accept
 
 def construct_svd_basis(xgp_W0, mindex, maindex, NP_indices):
 
@@ -2069,7 +1541,6 @@ def return_refine_count(df):
     df.loc[(df['svd_value'] > 0) & (df['svd_value'] <= df['TrainMin']), 'n_SVD_Count'] = 1
     df.loc[(df['s_scalar_value'] > 0) & (df['s_scalar_value'] <= df['TrainMin']), 'scalar_SVD_Count'] = 1
     df.loc[(df['s_exp_value'] > 0) & (df['s_exp_value'] <= df['TrainMin']), 'exp_SVD_Count'] = 1
-    #df.loc[(df['s_log_value'] > 0) & (df['s_log_value'] <= df['TrainMin']), 'log_SVD_Count'] = 1
 
     final = df.groupby(['Run', 'NP'])[cols].sum()
     return final
@@ -2344,9 +1815,7 @@ def return_bma_val(return_method, dfs, optimum_point, x_2023, NN_model, test_dat
 
     return models, data
 
-
-
-def perform_clustering(NP, min_value, maindex, DE_model, gen_points, i):
+def perform_clustering(NP, test_value, maindex, DE_model, gen_points, i):
     
     clustering_list = ['kmeans', 'spectral', 'agg']
     clustering_type = random.choice(clustering_list)
@@ -2366,13 +1835,14 @@ def perform_clustering(NP, min_value, maindex, DE_model, gen_points, i):
     c_index = np.where(cluster_fitness == c_min_value)
     c_index = c_index[0][0]
 
-    if c_min_value < min_value:
-        logging.info(f'gen {i} {clustering_type} {num_of_clusters} clustering min {c_min_value} min {min_value}')
+    if c_min_value < test_value:
+        logging.info(f'gen {i} {clustering_type} {num_of_clusters} clustering min {c_min_value} min {test_value}')
         gen_points[:,maindex] = cgp_W0[:,c_index].copy()
+        test_value = c_min_value
     
-    return gen_points, c_min_value
+    return gen_points, test_value, c_min_value
 
-def perform_search(NP, min_value, maindex, DE_model, gen_points,i, NP_indices, current):
+def perform_search(NP, test_value, maindex, DE_model, gen_points,i, NP_indices, current):
     local_ = 20
     samples = local_ * (int(current/1000) + 1)
     
@@ -2385,14 +1855,15 @@ def perform_search(NP, min_value, maindex, DE_model, gen_points,i, NP_indices, c
     mindex = np.where(search_fitness == l_fit)
     mindex = mindex[0] # index integer
 
-    if l_fit < min_value:
-        logging.info(f'gen {i} local search min {l_fit} min {min_value}')
+    if l_fit < test_value:
+        logging.info(f'gen {i} local search min {l_fit} min {test_value}')
         gen_points[:,maindex] = local[:,mindex].reshape(DE_model.d,)
+        test_value = l_fit
 
-    return gen_points, l_fit 
+    return gen_points, test_value, l_fit
 
 
-def perform_svd_filter(NP, min_value, maindex, DE_model, gen_points,i, NP_indices, current):
+def perform_svd_filter(NP, test_value, maindex, DE_model, gen_points,i, NP_indices, current):
     j = 2
     svd_points= svd_space(gen_points, j)
     svd_fitness = DE_model.analytical(svd_points,DE_model.d)
@@ -2406,60 +1877,41 @@ def perform_svd_filter(NP, min_value, maindex, DE_model, gen_points,i, NP_indice
     if len(mindex) > 1:
         mindex = mindex[0]
 
-    if svd_fit < min_value:
-        logging.info(f'gen {i} svd filter min {svd_fit} min {min_value}')
+    if svd_fit < test_value:
+        logging.info(f'gen {i} svd filter min {svd_fit} min {test_value}')
         gen_points[:,maindex] = svd_points[:,mindex].reshape(DE_model.d,)
+        test_value = svd_fit
 
-    return gen_points, svd_fit
+    return gen_points, test_value, svd_fit
 
 
-def perform_svd_scalar(NP,bootstrapping, X_train, y_train, min_value, maindex, DE_model,
-                        reg_flag, NN_model, n_, gen_points,i, NP_indices, current):
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
-    dgp_W0, dgp_W1, dgp_W2 = {},{},{}
-    test_errors = []
+def perform_svd_scalar(NP, test_value, maindex, DE_model, gen_points,i, NP_indices, current):
 
-    S = 0
-    for k in NP_indices:
-        U_W0, S_W0, V_T_W0 = svd(xgp_W0[k])
-        U_W1, S_W1, V_T_W1 = svd(xgp_W1[k])
-        U_W2, S_W2, V_T_W2 = svd(xgp_W2[k])
+    points = gen_points 
 
-        for j in np.arange(0,2,0.1):
-            dgp_W0[S] = reconstruct_SVD(U_W0, S_W0*j, V_T_W0)
-            dgp_W1[S] = reconstruct_SVD(U_W1, S_W1*j, V_T_W1)
-            dgp_W2[S] = reconstruct_SVD(U_W2, S_W2*j, V_T_W2)
-            S = S+1
+    U_W0, S_W0, V_T_W0 = svd(gen_points)
 
-    for s in np.arange(0,S):
-        if bootstrapping:
-            X_train_ = X_train[s%NP]
-            y_train_ = y_train[s%NP]
-            m_ = len(y_train_)
-            s_scalar_value, dv = fitness(X_train_, dgp_W0[s], dgp_W1[s], dgp_W2[s], xgp_W3[s%NP], xgp_b0[s%NP], xgp_b1[s%NP], xgp_b2[s%NP], xgp_b3[s%NP],
-                            y_train_, m_, DE_model.error_metric, reg_flag, NN_model)
-        else:
-            s_scalar_value, dv = fitness(X_train, dgp_W0[s], dgp_W1[s], dgp_W2[s], xgp_W3[s%NP], xgp_b0[s%NP], xgp_b1[s%NP], xgp_b2[s%NP], xgp_b3[s%NP],
-                            y_train, n_, DE_model.error_metric, reg_flag, NN_model)
-            
-        test_errors.append(s_scalar_value)
+    scalars = np.arange(0.1,2,0.1)
+    scalars = np.delete(scalars, [7,8,9,10,11])
 
-        if s_scalar_value < min_value:
-            #logging.info(f'gen {i} svd scalar {s_scalar_value} max {max_value}')
-            logging.info(f'gen {i} svd scalar {s_scalar_value} min {min_value}')
-            xgp_W0[s%NP] = dgp_W0[s].copy()
-            xgp_W1[s%NP] = dgp_W1[s].copy()
-            xgp_W2[s%NP] = dgp_W2[s].copy()
-            xgp_W3[s%NP] = xgp_W3[s%NP].copy()
+    for j in scalars:
+        test = reconstruct_SVD(U_W0, S_W0*j, V_T_W0)
+        points = np.hstack((points,test))        
 
-            xgp_b0[s%NP] = xgp_b0[s%NP].copy()
-            xgp_b1[s%NP] = xgp_b1[s%NP].copy()
-            xgp_b2[s%NP] = xgp_b2[s%NP].copy()
-            xgp_b3[s%NP] = xgp_b3[s%NP].copy()
-            break
+    svd_scalar_fitness = DE_model.analytical(points,DE_model.d)
+    s_scalar_value = np.amin(svd_scalar_fitness)
+    mindex = np.where(svd_scalar_fitness == s_scalar_value)
+    mindex = mindex[0] # index integer
 
-    xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = gen_points
-    return gen_points, s_scalar_value 
+    if len(mindex) > 1:
+        mindex = mindex[0]
+
+    if s_scalar_value < test_value:
+        logging.info(f'gen {i} svd scalar {s_scalar_value} min {test_value}')
+        gen_points[:,maindex] = points[:,mindex].reshape(DE_model.d,)
+        test_value = s_scalar_value
+
+    return gen_points, test_value, s_scalar_value
 
 def perform_svd_exp(NP,bootstrapping, X_train, y_train, min_value, maindex, DE_model,
                         reg_flag, NN_model, n_, gen_points,i, NP_indices, current):
@@ -2608,149 +2060,6 @@ def post_DE(post_de_args, de_output):
     
     return models, data
 
-
-def post_DE_MCMC(post_de_mcmc_args, args2, mcmc_chain,G):
-
-    optimum_point, gen_points, val_points, dfs, scaler, X_train_scaled, y_train = args2
-    application, daytype, num_layers, NN_model, Data, test_data, x_2023, error_metric,\
-    models,ycol, DE_model, NP_indices, reg_flag, return_method, print_master, NP, MCMC, DE_model = post_de_mcmc_args
-
-    gb_W0, gb_W1, gb_W2, gb_W3, gb_b0, gb_b1, gb_b2, gb_b3 = gen_points
-
-    burn_in = MCMC.burn_in
-    pred_post_sample = MCMC.pred_post_sample
-    parallel_chain = MCMC.parallel_chain
-    model_name = application + ' ' + daytype
-    
-    # bayesian neural network
-    # single model (set of weight matrics and bias vectors) samples for forecast
-    # mode of each posterior
-    
-    if num_layers == 3:
-        W0, W1, W2, W3, b0, b1, b2, b3 = mcmc_chain
-
-        data = dfs[dfs['Exit'] == 'True'].copy()
-        W0_, W0_fit, W0_T = return_distribution_mode(gb_W0, W0, 'W0', DE_model.run, parallel_chain, MCMC, model_name)
-        W1_, W1_fit, W1_T = return_distribution_mode(gb_W1, W1, 'W1', DE_model.run, parallel_chain, MCMC, model_name)
-        W2_, W2_fit, W2_T = return_distribution_mode(gb_W2, W2, 'W2', DE_model.run, parallel_chain, MCMC, model_name)
-        W3_, W3_fit, W3_T = return_distribution_mode(gb_W3, W3, 'W3', DE_model.run, parallel_chain, MCMC, model_name)
-            
-        b0_, b0_fit, b0_T = return_distribution_mode(gb_b0, b0, 'b0', DE_model.run, parallel_chain, MCMC, model_name)
-        b1_, b1_fit, b1_T = return_distribution_mode(gb_b1, b1, 'b1', DE_model.run, parallel_chain, MCMC, model_name)
-        b2_, b2_fit, b2_T = return_distribution_mode(gb_b2, b2, 'b2', DE_model.run, parallel_chain, MCMC, model_name)
-        b3_, b3_fit, b3_T = return_distribution_mode(gb_b3, b3, 'b3', DE_model.run, parallel_chain, MCMC, model_name)
-
-        plot_predictive = True
-
-        # need to batch for larger chain
-        # populating such large 3d arrays runs out of memory
-
-        if pred_post_sample not in ['default']:
-            total_sample_length = pred_post_sample
-        else:
-            total_sample_length = len(W0_T)
-
-        print(f'total chain length {total_sample_length} pred_post_sample {pred_post_sample}')
-        
-        batch_size = int(min(G-burn_in,total_sample_length)) # can't exceed number of samples: produces all zeros
-        multiple = int(total_sample_length/batch_size)
-        num_target = len(test_data[Data.target])
-
-        M = np.zeros((total_sample_length,num_target,1))
-        
-        for w in np.arange(0,multiple):
-            batch_start = w*batch_size
-            batch_end = (w+1)*batch_size
-            samples_pred_batch = DE_model.DENN_forecast(x_2023, W0_T[batch_start:batch_end], W1_T[batch_start:batch_end], W2_T[batch_start:batch_end], W3_T[batch_start:batch_end],
-                                                b0_T[batch_start:batch_end], b1_T[batch_start:batch_end], b2_T[batch_start:batch_end], b3_T[batch_start:batch_end], 
-                                                NN_model, MCMC)
-            M[batch_start:batch_end,:,:] = samples_pred_batch
-
-        # mean of posterior predictive samples
-        
-        chickenbutt = np.mean(M[-total_sample_length:,:,:],axis=0)
-        rmse_mean_pred = root_mean_squared_error(test_data[Data.target], chickenbutt)
-        samples_pred = M.copy()
-        logging.critical(f'posterior predictive samples {len(samples_pred)}')
-
-        if plot_predictive:
-            xcol = 'datetime'
-            boo = test_data.copy()
-            boo['pred_mean'] = np.mean(samples_pred, axis=0)
-            boo['actual'] = test_data[Data.target]
-            boo['lower'] = np.percentile(samples_pred, 5, axis=0)
-            boo['upper'] = np.percentile(samples_pred, 95, axis=0)
-            boohoo = pd.DataFrame(boo, columns = ['datetime', 'pred_mean', 'actual', 'lower', 'upper'])
-            boohoo.index = pd.DatetimeIndex(boohoo.datetime)
-
-            dataset = boohoo.asfreq('h')
-            dataset['datetime'] = dataset.index
-            dataset['Month'] = dataset['datetime'].dt.month
-
-            plot_CI(dataset, xcol, samples_pred, application, daytype, DE_model.run, 'year')
-
-            sum_list = [6]
-            summer_mask = dataset['Month'].isin(sum_list)
-            jdataset = dataset[summer_mask].copy()
-
-            plot_CI(jdataset, xcol, samples_pred, application, daytype, DE_model.run, 'june')
-
-            # computational approximation for weight/bias posterior
-            # can use fitted distribution for predictive posterior
-            # define distribution and sample from it
-            # construct 3d arrays from posterior samples
-
-            # weight/bias mode forecast
-
-        y_2023_mode_pred = DE_model.DENN_forecast(x_2023, W0_, W1_, W2_, W3_, b0_, b1_, b2_, b3_, NN_model, MCMC)
-        mode_rmse_2023 = root_mean_squared_error(test_data[Data.target], y_2023_mode_pred)
-        weights=None
-        pred_mode_2023_score = return_error_metric(test_data[Data.target], y_2023_mode_pred, error_metric, weights)
-        data[f'2023_{error_metric}_MCMC_mode'] = pred_mode_2023_score
-        data['2023_RMSE_MCMC_mode'] = mode_rmse_2023
-        data['c'] = total_sample_length
-        data['pred_post_sample'] = pred_post_sample
-        data['TestStd'] = np.std(y_2023_mode_pred,axis=0)[0]
-        data['2023_RMSE_MCMC_mean'] = rmse_mean_pred
-
-        if parallel_chain:
-
-            # gelman-rubin convergence diagnostic
-
-            gb_df, diag = gelman_rubin(mcmc_chain, gen_points, DE_model.run)
-            write_gelman(gb_df, diag, DE_model.run)
-
-        models.append(data)
-        xcol = 'datetime'
-        label = f'DE-NN Predicted-MCMC-{error_metric}-{application}'
-        file_ext = f'{application}-{daytype}-denn-test-{DE_model.run}.png'
-        DE_model.plot(test_data[xcol], ycol, test_data[Data.target], y_2023_mode_pred, label, file_ext)
-    name='mcmc'
-    #success = write_weights( W0_, W1_, W2_, W3_, b0_, b1_, b2_, b3_,run,name)
-
-    return models, data
-
-def return_layers(application,daytype,MCMC):
-    if application == 'lmp':
-        layers = (5,5,1)
-    if daytype == 'weekday':
-        #layers = (5,5,4)
-        #layers = (4,3,4)
-        layers = (150,100,50)
-    if daytype == 'weekend':
-        layers = (4,4,3)
-
-    if MCMC.run_mcmc:
-        if application == 'lmp':
-            layers = (5,5,1)
-        if daytype == 'weekday':
-            #layers = (4,3,4)
-            layers = (100,75,50)
-        if daytype == 'weekend':
-            layers = (4,4,3)
-
-    return layers
-
 @ray.remote
 def process(other_args, de_input, run):
     application,daytype,num_layers,test_data,error_metric,ycol,reg_flag, return_method, print_master, NP, models = other_args
@@ -2764,27 +2073,13 @@ def process(other_args, de_input, run):
     # model selection
 
     NP_indices = list(np.arange(0,NP))
-    #X_ = x_2020
-    #y_ = training_data[Data.target]
-
-    # 2023
-
-    x_2023 = test_data[Data.x_cols].copy()
-    x_2023 = scaler.transform(x_2023)
 
     #models=[]    
 
     post_de_args = application, daytype, num_layers, NN_model, Data, test_data, x_2023, error_metric,\
                                 models,ycol, DE_model, NP_indices, reg_flag, return_method, print_master, NP, MCMC, DE_model
 
-    if not MCMC.run_mcmc:
-        models, data = post_DE(post_de_args, de_output)
-        
-    if MCMC.run_mcmc:
-        args2 = optimum_point, gen_points, val_points, dfs, scaler, X_train_scaled, y_train
-        post_de_mcmc_args = application, daytype, num_layers, NN_model, Data, test_data, x_2023, error_metric,\
-                                models,ycol, DE_model, NP_indices, reg_flag, return_method, print_master, NP, MCMC, DE_model
-        models, data = post_DE_MCMC(post_de_mcmc_args, args2, mcmc_chain,DE_model.g)
+    models, data = post_DE(post_de_args, de_output)      
 
     #master.append(dfs)                
     #run = run + 1
@@ -2792,399 +2087,3 @@ def process(other_args, de_input, run):
     models=pd.concat(models,sort=False)
     #data=pd.concat(data,sort=False)
     return dfs, models
-
-
-# population best
-
-# path = r'/home/wesley/repos/DE/output/DE-NN-load-summary-standard-error-exploration-load-search-468-1500-refinement-bag-layers-weekday.ods'
-# data = read_ods(path, sheet='model_data_mean')
-
-# #data['B'] = '2023_RMSE_mean'
-# data['B'] = pd.to_numeric(data['2023_RMSE_mean'])
-# cols = ['NP_', 'G_', 'error_metric_']
-# #test = data.loc[data.groupby(cols).B.idxmin()]
-# test = data.loc[data.groupby(cols)['B'].idxmin()]
-
-# out_dir = r'../output'
-# output_name = 'agg'
-# output_loc = os.path.join(out_dir + os.sep + output_name + '.csv')
-# logging.info(f'Saving to {output_loc}')
-# test.to_csv(output_loc)
-
-
-if False:
-
-    path = r'/home/wesley/repos/DE/output/paper-denn/DE-NN-load-summary-exploration-load-search-4-500-refinement-bag-weekend.ods'
-    df = read_ods(path, sheet='model_data')
-    key = ['layers', 'error_metric', 'Run']
-    #df = df[df['2023_RMSE'] < 8].copy()
-    data = df.groupby(key)["2023_RMSE"].min()
-    data = data.reset_index(drop = False)
-    #data.hist(column='2023_RMSE', by='error_metric', bins='auto')
-
-    # output summary data
-
-    kfc = (f'DE-NN-explore') 
-    out_dir = r'../output'
-    output_name = '-'.join(kfc)
-    output_loc = os.path.join(out_dir + os.sep + output_name + '.ods')
-    logging.info(f'Saving to {output_loc}')
-
-    with pd.ExcelWriter(output_loc ) as writer:
-        df.to_excel(writer, sheet_name = 'df', index=False)
-        data.to_excel(writer, sheet_name = 'data', index=False)
-
-
-# histogram of averages
-
-# path = r'/home/wesley/repos/DE/output/paper-denn/DE-NN-load-summary-exploration-load-search-4-500-refinement-bag-weekend.ods'
-# df = read_ods(path, sheet='model_data_mean')
-# data = df.groupby("layers_")["2023_RMSE_mean"].min()
-# data = data.reset_index(drop = False)
-# data.hist(bins='auto')
-
-# if False:
-
-#     path = r'/home/wesley/repos/DE/output/paper-denn/DE-NN-load-summary-exploration-load-search-4-500-refinement-bag-weekend.ods'
-#     df = read_ods(path, sheet='model_data')
-#     key = ['layers', 'error_metric', 'Run']
-#     #df = df[df['2023_RMSE'] < 8].copy()
-#     data = df.groupby(key)["2023_RMSE"].min()
-#     data = data.reset_index(drop = False)
-#     #data.hist(column='2023_RMSE', by='error_metric', bins='auto')
-
-#     # output summary data
-
-#     kfc = (f'DE-NN-explore') 
-#     out_dir = r'../output'
-#     output_name = '-'.join(kfc)
-#     output_loc = os.path.join(out_dir + os.sep + output_name + '.ods')
-#     logging.info(f'Saving to {output_loc}')
-
-#     with pd.ExcelWriter(output_loc ) as writer:
-#         df.to_excel(writer, sheet_name = 'df', index=False)
-#         data.to_excel(writer, sheet_name = 'data', index=False)
-    
-# if False:
-
-#     path = r'/home/wesley/repos/DE/output/paper-denn/MLP-NN-kWh-PepperCanyon-weekend.ods'
-#     df = read_ods(path, sheet='runs')
-#     key = ['hidden_layer_sizes', 'batch_size', 'validation_fraction']
-#     df = df[df['2019_RMSE'] < 8].copy()
-#     data = df.groupby(key)["2019_RMSE"].min()
-#     data = data.reset_index(drop = False)
-#     #data.hist(column='2019_RMSE', bins='auto')
-#     data.hist(column='2019_RMSE')
-
-
-# path = r'/home/wesley/repos/DE/output/paper-denn/DE-NN-lmp-summary-standard-error-exploration-lmp-layers-rmsle.ods'
-# df = read_ods(path, sheet='model_data')
-# df['Run'] = df['Run'].astype(int)
-# df = df[df['c'] == 1].copy()
-
-# key_col = 'layers'
-# keys = df[key_col].drop_duplicates().tolist()
-                     
-# c1 = 'TrainMin'
-# c2 = '2023_RMSE'
-
-# df_list = []
-
-# for k in keys:
-#         current = df[df[key_col] == k].copy()
-#         cv = current[c1].corr(current[c2])
-#         data = pd.DataFrame({'Run':[k], 'Correlation':[cv] })
-#         df_list.append(data)
-        
-# test = pd.concat(df_list, sort=False)
-# boo = False
-
-# ffs = ['best', 'random', 'best2', 'random2', 'best3', 'random3']
-# r = 8
-# three = return_operator_weight(ffs, 3)
-
-# ffs = ['best', 'random', 'best2', 'random2',]
-# r = 3
-# two = return_operator_weight(ffs, r)
-
-# ffs = ['best', 'random', ]
-# r = 3
-# one = return_operator_weight(ffs, r)
-
-#ffs = [ True, False]
-#r = 4
-#one = return_combo_list(ffs, r)
-
-#ffs = [ 1,2,3,4,5]
-#r = 3
-#one = return_combo_list(ffs, r)
-#print(f'length {len(one)}')
-
-# ffs = ['mae', 'rmsle', 'log_cosh', 'r2', 'rae', 'mape', 'med_abs', 'rmse']
-
-# test = return_error_index(ffs, 4, 1)
-# test2 = return_error_index(ffs, 5, 1)
-# test3 = return_error_index(ffs, 6, 1)
-# test4 = return_error_index(ffs, 7, 1)
-# test5 = return_error_index(ffs, 3, 1)
-# test6 = return_error_index(ffs, 2, 1)
-
-#ffs = [5,10]
-#test = return_combo_list(ffs, 3)
-
-# if vary_error:
-
-#     # uniformly choose an error function.
-
-#     loss_list = ['rmse', 'mae', 'mape', 'rmsle', 'rae', 'log_cosh', 'med_abs', 'r2']
-#     error_function = random.choice(loss_list)
-
-#     # create standard error dict with this choice
-
-#     error_metric_dict = create_error_metric_dict(None, error_function, NP, 'uniform')
-
-#     # set min value index to default
-
-#     error_metric_dict[mindex] = DE_model.error_metric
-
-if False:
-
-    path = r'/home/wesley/repos/DE/output/DE-NN-lmp-refinement.csv'
-    df = pd.read_csv(path)
-
-    key_col = 'Run'
-    keys = df[key_col].drop_duplicates().tolist()
-                        
-    c1 = 'Acceptance'
-    c2 = '2023_RMSE'
-
-    df_list = []
-
-    plt.figure(figsize=(12,6))
-    for k in keys:
-            current = df[df[key_col] == k].copy()
-            current = current.reset_index(drop = True)
-            np_ = current.loc[0,'NP']
-            x_ = np.arange(0,len(current))
-            
-            plt.plot(x_, current[c1],  label=f'Run {k}', linewidth=0.75)        
-            plt.xlabel('Gen')
-            plt.ylabel(c1)
-            plt.legend(fontsize = 10, loc='upper right')
-    plt.show()
-
-    dir_path = '/home/wesley/repos/'
-    kfc = ('AR', '15')
-    output_name = '-'.join(kfc)
-    output_loc = os.path.join(dir_path + os.sep, output_name + '.png')
-    logging.info(f'Saving to {output_loc}')
-    plt.savefig(output_loc, dpi=300, bbox_inches = 'tight')
-    #plt.close()
-
-# import random
-# import numpy as np
-
-# def create_arrays():
-#     arrays = []
-#     for i in range(10):
-#         arrays.append(np.random.rand(1, 2000))
-#     return arrays
-
-# import matplotlib.pyplot as plt
-
-# def plot_arrays(arrays):
-#     plt.figure(figsize=(10, 5))
-#     plt.plot(np.mean(arrays, axis=0)[0], label='Mean')
-#     plt.fill_between(range(2000), np.percentile(arrays, 5, axis=0)[0], np.percentile(arrays, 95, axis=0)[0], alpha=0.5, label='5% and 95% confidence interval')
-#     plt.legend()
-#     plt.show()
-
-# arrays = create_arrays()
-# plot_arrays(arrays)
-
-if False:
-
-    path = r'/home/wesley/repos/DE/output/paper-bayes-denn/weekend/DE-NN-load-summary-standard-error-exploration-load-search-8-15k-denn--weekend-parallel.ods'
-    path2 = r'/home/wesley/repos/DE/output/paper-bayes-denn/weekday/DE-NN-load-summary-standard-error-exploration-load-search-8-15k-denn-parallel-weekday.ods'
-    df = read_ods(path, sheet='model_data')
-    df2 = read_ods(path2, sheet='model_data')
-
-    fig, (ax1, ax2) = plt.subplots(2,figsize=(8, 6))
-    #plt.figure(figsize=(18, 6))
-    #fig.suptitle('Vertically stacked subplots')
-    ax1.plot(df['c'], df['2023_rmse_MCMC_mode'])
-    ax1.plot(df['c'], df['2023_RMSE_MCMC_mean'])
-    ax1.set_title('Weekend')
-    ax1.set(ylabel='rmse')
-    ax1.legend(('MCMC_mode', 'MCMC_mean'), loc='lower left', shadow=True)
-    ax2.plot(df2['c'], df2['2023_rmse_MCMC_mode'])
-    ax2.plot(df2['c'], df2['2023_RMSE_MCMC_mean'])
-    ax2.set_title('Weekday')
-    ax2.set(xlabel='Chain', ylabel='rmse')
-    ax2.legend(('MCMC_mode', 'MCMC_mean'), loc='upper right', shadow=True)
-    plt.tight_layout()
-    plt.show()
-
-if False:
-
-    path = r'/home/wesley/repos/DE/output/paper-denn/weekday/DE-NN-load-summary-standard-error-exploration-load-search-8-2k-denn-comparison-weekday.ods'
-    df = read_ods(path, sheet='model_data')
-    df = df[df['return_method'] == 'bma'].copy()
-    df = df[df['bootstrapping'] == '(True, 1)'].copy()
-        #df = df[df['init'] == ''].copy()
-    df = df[df["init"].str.contains("uniform")]
-
-    key_col = 'Run'
-    keys = df[key_col].drop_duplicates().tolist()
-                        
-    c1 = '2023_RMSE'
-    #c2 = '2023_RMSE'
-
-    df_list = []
-
-    plt.figure(figsize=(12,6))
-    for k in keys:
-            current = df[df[key_col] == k].copy()
-            current = current.reset_index(drop = True)
-            np_ = current.loc[0,'NP']
-            x_ = np.arange(0,len(current))
-            
-            plt.plot(x_, current[c1],  label=f'Run {k}', linewidth=0.75)        
-            plt.xlabel('Gen')
-            plt.ylabel(c1)
-            plt.legend(fontsize = 10, loc='upper right')
-    plt.show()
-
-    dir_path = '/home/wesley/repos/'
-    kfc = ('AR', '15')
-    output_name = '-'.join(kfc)
-    output_loc = os.path.join(dir_path + os.sep, output_name + '.png')
-    logging.info(f'Saving to {output_loc}')
-    plt.savefig(output_loc, dpi=300, bbox_inches = 'tight')
-    #plt.close()
-
-
-if False:
-
-    path = r'/home/wesley/repos/DE/output/paper-denn/weekend/prelim/DE-NN-load-summary-standard-error-exploration-load-search-28-while-denn-rmsle-bma-val-sample-CURVE-even-weekend.ods'
-    df = read_ods(path, sheet='model_data_mean')
-    x = df['val_sample_']
-    y = df['2023_RMSE_mean']
-    #import matplotlib as mpl
-    
-    plt.figure(figsize=(12,6))
-    plt.plot(x, y,  label='NP=28', linewidth=1)
-    plt.title('Weekend BMA 20-Run Average', fontsize = 20,)
-    plt.xlabel('Number of Validation Indices', fontsize = 20,)
-    plt.ylabel('RMSE', fontsize = 20,)
-    plt.legend(fontsize = 20, loc='upper right')
-    plt.xticks(fontsize=18)
-    plt.yticks(fontsize=18)
-
-    dir_path = '/home/wesley/repos/'
-    kfc = ('Weekend', 'BMA Val Sample Curve')
-    output_name = ' '.join(kfc)
-    output_loc = os.path.join(dir_path + os.sep, output_name + '.png')
-    logging.info(f'Saving to {output_loc}')
-    plt.savefig(output_loc, dpi=300, bbox_inches = 'tight')
-    plt.show()
-
-
-# plot difference vectors
-
-if False:
-
-# Define the vectors
-
-    a = np.array([2,6])
-    b = np.array([4,4])
-    base = np.array([10,3])
-    diff = a-b
-    test = base + diff
-
-    d = np.array([6,5])
-    e = np.array([8,9])
-    base2 = np.array([1,3])
-    diff2 = e-d
-
-    plt.figure(figsize=(10,6))
-    # Plot the first vector (v1) as an arrow
-    plt.quiver(b[0], b[1], diff[0], diff[1], angles="xy", scale_units="xy", scale = 1, color="Red", width=2e-3)
-    # Plot the second vector (v2) as an arrow
-    plt.quiver(base[0], base[1], diff[0], diff[1], angles="xy", scale_units="xy", scale = 1, color="cornflowerblue", width=2e-3)
-
-    # plot points
-
-    plt.quiver(0, 0, a[0], a[1], angles="xy", scale_units="xy", scale = 1, color="darkgreen", width=2e-3)
-    plt.quiver(0, 0, b[0], b[1], angles="xy", scale_units="xy", scale = 1, color="gray", width=2e-3)
-    plt.quiver(0, 0, base[0], base[1], angles="xy", scale_units="xy", scale = 1, color="darkmagenta", width=2e-3)
-    plt.quiver(0, 0, test[0], test[1], angles="xy", scale_units="xy", scale = 1, color="maroon", width=2e-3)
-
-    plt.plot(a[0], a[1], '.', markersize=10, label='a')
-    plt.plot(b[0], b[1], '.', markersize=10, label='b')
-    plt.plot(base[0], base[1], '.', markersize=10, label='r1')
-    plt.plot(test[0], test[1], '.', markersize=10, label='test')
-    #plt.plot(d[0], d[1], '.', markersize=10, label='d')
-    #plt.plot(e[0], e[1], '.', markersize=10, label='e')
-
-    # Set the limits for the plot
-    plt.xlim([0,11])
-    plt.ylim([0,7])
-
-    # annotate
-    plt.annotate('r2', # this is the text
-                    (a[0],a[1]), # these are the coordinates to position the label
-                    textcoords="offset points", # how to position the text
-                    xytext=(0,10), # distance from text to points (x,y)
-                    fontsize=15,
-                    ha='center') # horizontal alignment can be left, right or center
-
-    plt.annotate('r3', # this is the text
-                    (b[0],b[1]), # these are the coordinates to position the label
-                    textcoords="offset points", # how to position the text
-                    xytext=(0,10), # distance from text to points (x,y)
-                    fontsize=15,
-                    ha='center') # horizontal alignment can be left, right or center
-
-    plt.annotate('r1', # this is the text
-                    (base[0],base[1]), # these are the coordinates to position the label
-                    textcoords="offset points", # how to position the text
-                    xytext=(0,15), # distance from text to points (x,y)
-                    fontsize=15,
-                    ha='center') # horizontal alignment can be left, right or center
-
-    plt.annotate('r2-r3', # this is the text
-                    (b[0],b[1]), # these are the coordinates to position the label
-                    textcoords="offset points", # how to position the text
-                    xytext=(-35,50), # distance from text to points (x,y)
-                    fontsize=15,
-                    ha='center') # horizontal alignment can be left, right or center
-
-    plt.annotate('r2-r3', # this is the text
-                    (base[0],base[1]), # these are the coordinates to position the label
-                    textcoords="offset points", # how to position the text
-                    xytext=(-35,50), # distance from text to points (x,y)
-                    fontsize=15,
-                    ha='center') # horizontal alignment can be left, right or center
-
-    plt.annotate('r', # this is the text
-                    (test[0],test[1]), # these are the coordinates to position the label
-                    textcoords="offset points", # how to position the text
-                    xytext=(-10,10), # distance from text to points (x,y)
-                    fontsize=15,
-                    ha='center') # horizontal alignment can be left, right or center
-
-    # Set the labels for the plot
-    plt.xlabel('x', fontsize = 20,)
-    plt.ylabel('y', fontsize = 20,)
-
-    # Show the grid lines
-    plt.grid()
-    plt.show()
-
-    dir_path = '/home/wesley/repos/'
-    output_name = 'difference_vector'
-    output_loc = os.path.join(dir_path + os.sep + 'images', output_name + '.png')
-    plt.savefig(output_loc, dpi=300, bbox_inches = 'tight')
-    #plt.close()
-

@@ -623,38 +623,36 @@ def differential_evolution_vector(DE_model):
 
         # refinement
 
-        c_min_value = 0
-        l_fit = 0
-        
-        svd_fit = 0
-        s_scalar_value = 0
-        s_exp_value = 0
+        comparison_value = min_value
+        c_min_value = 1e6
+        l_fit = 1e6
+        svd_fit = 1e6
+        s_scalar_value = 1e6
+        s_exp_value = 1e6
 
         # clustering
 
         if current > refine_current_start and i_accept > 0 and run_cluster and current % refine_mod_start in cluster_r:
-            cluster_points, c_min_value = DE_model.perform_clustering(NP, comparison_value, maindex, DE_model, xgp,i)            
+            cluster_points, comparison_value, c_min_value = DE_model.perform_clustering(NP, comparison_value, maindex, DE_model, xgp,i)
+            xgp = cluster_points
 
-        # local search
-        # number of samples perturbed around population
-        # fitness value of all samples checked.
-        # perturbed candidate has fitness value lower than current poplation best, then it
-        # replaces the minimum and process exit
+        # local search 
 
         if current > refine_current_start and i_accept > 0 and run_local and current % refine_mod_start in local_r:
-            search_points, l_fit = DE_model.perform_search(NP,comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
+            search_points, comparison_value, l_fit = DE_model.perform_search(NP,comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
+            xgp = search_points
 
         # SVD filter
 
-        comparison_value = min_value
-
         if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_filter_r:
-            svd_points, svd_fit  = DE_model.perform_svd_filter(NP,comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
+            svd_points, comparison_value, svd_fit = DE_model.perform_svd_filter(NP,comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
+            xgp = svd_points
         
         # scalar SVD
 
-        # if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_scalar_r:
-        #     svd_scalar_points, s_scalar_value  = DE_model.perform_svd_filter(NP, comparison_value, maindex, DE_model, gen_points,i, NP_indices, current)
+        if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_scalar_r:
+            svd_scalar_points, comparison_value, s_scalar_value = DE_model.perform_svd_scalar(NP, comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
+            xgp = svd_scalar_points
         
         # # exp scalar
 

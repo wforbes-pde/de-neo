@@ -81,7 +81,7 @@ def main(argv=None):
     models = []
     master = []
     run = 0
-    result_ids = []
+
     for param in combinations:
         #try:
         logging.info(f'Starting DE exploration Run {run}/{len(combinations)} {param}')
@@ -153,7 +153,7 @@ def main(argv=None):
     output_name = '-'.join(kfc)
     output_loc = os.path.join(out_dir + os.sep + output_name + '.csv')
     #logging.critical(f'Saving to {output_loc}')
-    #full_data.to_csv(output_loc)
+    full_data.to_csv(output_loc)
     
     # slice exit generation
 
@@ -165,7 +165,7 @@ def main(argv=None):
            'F_delta', 'lowerF', 'upperF', 'F_refine', 'refine_param', 
            'mutation_refine', 'lowerCR', 'upperCR', 'CR_refine', 'CR_delta', 
            'return_method', 'track_len', 'error_metric', 'run_enh',  'init', 'exh', 'val_sample',
-           'c'] # add neurons for 1 layer ADD BACK 'c'
+           'c'] 
     key_cols = ['Minimum']
     
     # across each group and index c
