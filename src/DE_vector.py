@@ -654,12 +654,6 @@ def differential_evolution_vector(DE_model):
             svd_scalar_points, comparison_value, s_scalar_value = DE_model.perform_svd_scalar(NP, comparison_value, maindex, DE_model, xgp,i, NP_indices, current)
             xgp = svd_scalar_points
         
-        # # exp scalar
-
-        # if current > refine_current_start and i_accept > 0 and run_svd and current % refine_mod_start in svd_exp_r:
-        #     svd_exp_points, s_exp_value  = DE_model.perform_svd_exp(NP, comparison_value, maindex, DE_model, gen_points,i, NP_indices, current)
-        #     xgp_W0, xgp_W1, xgp_W2, xgp_W3, xgp_b0, xgp_b1, xgp_b2, xgp_b3 = svd_exp_points
-        
         # collect parameters and data
         
         if refine_random:
