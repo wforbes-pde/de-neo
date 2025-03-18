@@ -7,13 +7,11 @@ import logging
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from DE_vector_helper import DEModelClass
 from DE_vector_helper import return_refine_count
 from DE_vector import differential_evolution_vector
 from sklearn.neural_network import MLPRegressor
-from DE_vector_helper import process, post_DE
-from pandas_ods_reader import read_ods
+from DE_vector_helper import post_DE
 
 print_master = False
 
@@ -65,11 +63,7 @@ def main(argv=None):
                                (True, True, True),
                              #  (False, True, True),
                             ],
-            'exhaustive': [  (False,20,6), 
-                            # (True,50,6), 
-                                 ], # run_exh, current, subset
-            'val_sample': [ 4, ], # bma val minimum indices
-            'd': [ 20, ], # dimension
+            'd': [ 10, ], # dimension
             'test_function': [ 'rosenbrock' ], # test function to find minimum of
     }
     
@@ -107,28 +101,26 @@ def main(argv=None):
         upperCR = param[18]
         return_method = param[19]                              
         error_metric = param[20]
-        run_enh = param[21]       
-        exhaustive_ = param[22]
-        val_sample_ = param[23]
-        d_ = param[24]
-        test_function_ = param[25]
+        run_enh = param[21]
+        d_ = param[22]
+        test_function_ = param[23]
 
         DE_model = DEModelClass(NP, G, F, CR, mutation_type, tol, NPI, init, track_length,
                                 F_refine, F_delta, lowerF, upperF,
                                 mutation_refine, refine_param, 
                                 CR_refine, CR_delta, lowerCR, upperCR,
-                                return_method, error_metric, run_enh, exhaustive_, val_sample_,
+                                return_method, error_metric, run_enh,
                                 run, d_, test_function_)
 
         # run DE and return resultant best-fitting candidate
 
-        optimum_point, gen_points, val_points, dfs = differential_evolution_vector(DE_model)
+        optimum_point, gen_points, dfs = differential_evolution_vector(DE_model)
 
         # model selection
 
         NP_indices = list(np.arange(0,NP))
 
-        args2 = optimum_point, gen_points, val_points, dfs
+        args2 = optimum_point, gen_points, dfs
         post_de_args = error_metric, models,DE_model, NP_indices, return_method, print_master, NP, DE_model
         models, data = post_DE(post_de_args, args2)
         
@@ -164,8 +156,7 @@ def main(argv=None):
     key = ['G', 'NP', 'NPI', 'F', 'CR', 'mutation_type', 'tol', 
            'F_delta', 'lowerF', 'upperF', 'F_refine', 'refine_param', 
            'mutation_refine', 'lowerCR', 'upperCR', 'CR_refine', 'CR_delta', 
-           'return_method', 'track_len', 'error_metric', 'run_enh',  'init', 'exh', 'val_sample',
-           'c'] 
+           'return_method', 'track_len', 'error_metric', 'run_enh',  'init', 'c'] 
     key_cols = ['Minimum']
     
     # across each group and index c

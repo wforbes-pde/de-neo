@@ -26,6 +26,15 @@ def lhs_init(samples, dim, bounds):
         #a=False
     return pop
 
+def create_distinct_indices(NP_indices, test, NP, indices, num_selected):
+    for j in NP_indices:
+        indices.remove(j)
+        a = np.random.choice(indices, num_selected, replace=False)
+        a = list(a)
+        test.append(a)
+        indices = list(np.arange(0,NP))
+    return indices
+
 
 def mutate(d, NP, NP_indices, F_array, x):
 
@@ -41,13 +50,15 @@ def mutate(d, NP, NP_indices, F_array, x):
 
     indices = list(np.arange(0,NP))
     test=[]
+    num_selected = 3
+    indices = create_distinct_indices(NP_indices, test, NP, indices, num_selected)
 
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 3, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
+    # for j in NP_indices:
+    #     indices.remove(j)
+    #     a = np.random.choice(indices, 3, replace=False)
+    #     a = list(a)
+    #     test.append(a)
+    #     indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         i = test[e][0]
@@ -77,13 +88,15 @@ def mutate_two(d,NP, NP_indices, F_array, F2_array, x):
     
     indices = list(np.arange(0,NP))
     test=[]
+    num_selected = 5
+    indices = create_distinct_indices(NP_indices, test, NP, indices, num_selected)
 
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 5, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
+    # for j in NP_indices:
+    #     indices.remove(j)
+    #     a = np.random.choice(indices, 5, replace=False)
+    #     a = list(a)
+    #     test.append(a)
+    #     indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         i = test[e][0]
@@ -121,13 +134,15 @@ def mutate_three(d, NP, NP_indices, F_array, F2_array, F3_array, x):
     
     indices = list(np.arange(0,NP))
     test=[]
+    num_selected = 7
+    indices = create_distinct_indices(NP_indices, test, NP, indices, num_selected)
 
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 7, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
+    # for j in NP_indices:
+    #     indices.remove(j)
+    #     a = np.random.choice(indices, 7, replace=False)
+    #     a = list(a)
+    #     test.append(a)
+    #     indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         i = test[e][0]
@@ -170,13 +185,15 @@ def mutate_best(d, NP, NP_indices, F_array, gen_best, x):
 
     indices = list(np.arange(0,NP))
     test=[]
+    num_selected = 2
+    indices = create_distinct_indices(NP_indices, test, NP, indices, num_selected)
 
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 2, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
+    # for j in NP_indices:
+    #     indices.remove(j)
+    #     a = np.random.choice(indices, 2, replace=False)
+    #     a = list(a)
+    #     test.append(a)
+    #     indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         j = test[e][0]
@@ -204,13 +221,15 @@ def mutate_best_two(d, NP, NP_indices, F_array, F2_array, gen_best, x):
     
     indices = list(np.arange(0,NP))
     test=[]
+    num_selected = 4
+    indices = create_distinct_indices(NP_indices, test, NP, indices, num_selected)
 
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 4, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
+    # for j in NP_indices:
+    #     indices.remove(j)
+    #     a = np.random.choice(indices, 4, replace=False)
+    #     a = list(a)
+    #     test.append(a)
+    #     indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         j = test[e][0]
@@ -246,13 +265,15 @@ def mutate_best_three(d, NP, NP_indices, F_array, F2_array, F3_array, gen_best, 
     
     indices = list(np.arange(0,NP))
     test=[]
+    num_selected = 6
+    indices = create_distinct_indices(NP_indices, test, NP, indices, num_selected)
 
-    for j in NP_indices:
-        indices.remove(j)
-        a = np.random.choice(indices, 6, replace=False)
-        a = list(a)
-        test.append(a)
-        indices = list(np.arange(0,NP))
+    # for j in NP_indices:
+    #     indices.remove(j)
+    #     a = np.random.choice(indices, 6, replace=False)
+    #     a = list(a)
+    #     test.append(a)
+    #     indices = list(np.arange(0,NP))
 
     for e in NP_indices:
         j = test[e][0]
@@ -409,7 +430,6 @@ def differential_evolution_vector(DE_model):
     refine_gen_start, refine_current_start, refine_mod_start, refine_random = DE_model.refine_param
     F_refine = DE_model.F_refine    
     mutation_refine = DE_model.mutation_refine
-    run_exh, exh_current_start, exh_subset = DE_model.exhaustive
 
     CR_refine = DE_model.CR_refine
     lowerCR = DE_model.lowerCR
@@ -429,21 +449,6 @@ def differential_evolution_vector(DE_model):
 
     gen_train_fitness_list = []
     gen_train_resid_list = []
-
-    # validation data tracking for exit
-
-    gen_val_fitness_list = []
-    gen_val_resid_list = []
-
-    gen_val_score = 0
-    val_residual = 0
-    val_run_avg_resid = 0
-    vimin_value = 1e5
-    val_sample = DE_model.val_sample
-
-    d_gen_val_fitness_list, d_val_residual, d_gen_val_resid_list, d_val_run_avg_resid = {},{},{},{}
-    for k in NP_indices:
-        d_gen_val_fitness_list[k], d_val_residual[k], d_gen_val_resid_list[k], d_val_run_avg_resid[k] = [],{},[],{}
     
     # start DE exploration
     global acceptance_rate
@@ -618,7 +623,7 @@ def differential_evolution_vector(DE_model):
             DE_model.return_running_avg_residual(i, min_value, gen_train_fitness_list, gen_train_resid_list, track_len)
         
         if train_residual > 0:
-            logging.info(f'run {run} gen {i} index {mindex} minimum {min_value} train resid {train_residual} val resid {val_residual} current {current}')
+            logging.info(f'run {run} gen {i} index {mindex} minimum {min_value} train resid {train_residual} current {current}')
             #breakpoint()
 
         # refinement
@@ -666,24 +671,19 @@ def differential_evolution_vector(DE_model):
                         'refine_param':[str(DE_model.refine_param)], 'F_refine':[str(F_refine)], 'mutation_refine':[str(mutation_refine)], 
                         'lowerCR':[lowerCR], 'upperCR':[upperCR], 'CR_refine':[str(CR_refine)], 'CR_delta':[CR_delta],
                         'residual':[train_residual], 'run_avg_residual':[train_run_avg_residual_rmse], 'track_len':[track_len],
-                        'return_method':[return_method], 'mutation_type_':[mutation_op], 
-                        'error_metric':[error_metric], 
-                        'run_enh':[str(run_enh)], 
-                         'current':[current], 'i_accept':[i_accept], 
-                        'TrainMin':[min_value],'exh':[str(DE_model.exhaustive)], 'val_sample':[val_sample], 
-                        # 'ValScore':[gen_val_score], 'ValResidual':[val_residual], 'ValRAResid':[val_run_avg_resid], 
+                        'return_method':[return_method], 'mutation_type_':[mutation_op], 'error_metric':[error_metric], 
+                        'run_enh':[str(run_enh)], 'current':[current], 'i_accept':[i_accept], 'TrainMin':[min_value],
                         'clustering_score':[c_min_value], 'local_score':[l_fit], 
-                        'svd_value':[svd_fit], 's_scalar_value':[s_scalar_value], 's_exp_value':[s_exp_value], 
-                        'Exit':[str(False)],
+                        'svd_value':[svd_fit], 's_scalar_value':[s_scalar_value], 's_exp_value':[s_exp_value], 'Exit':[str(False)],
                     })        
         
-        logging.info(f'run {run} gen {i} index {mindex} {error_metric} minimum {min_value} train resid {train_residual} val resid {val_residual} current {current}')
+        logging.info(f'run {run} gen {i} index {mindex} {error_metric} minimum {min_value} train resid {train_residual} current {current}')
         
         if i == G-1:
             logging.info(f'run {run} gen {i} maximum generation exit criteria')
             df['Exit'] = str(True)
         
-        exit_criteria = val_run_avg_resid > 0 and i > val_gen_min and run_val and i_accept == 0
+        exit_criteria = i == G-1
         
         if not exit_criteria:
             df_list.append(df)
@@ -694,10 +694,8 @@ def differential_evolution_vector(DE_model):
             df_list.append(df)
             break     
 
-    #optimum_point = xgp[mindex]
     gen_points = xgp
     optimum_point = xgp[:,mindex]
-    val_points = gen_points
     dfs = pd.concat(df_list, sort = False)
 
     blah = pd.DataFrame(dfs, columns = ['current'])
@@ -711,5 +709,5 @@ def differential_evolution_vector(DE_model):
     stagnation_mean = np.mean(boo.current)
     dfs['MeanStagLen'] = stagnation_mean
 
-    return optimum_point, gen_points, val_points, dfs
+    return optimum_point, gen_points, dfs
 
