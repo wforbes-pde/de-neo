@@ -1,94 +1,88 @@
 import numpy as np
 import logging
-from amuse.lab import Particles, nbody_system, ph4
+from amuse.lab import Particles, nbody_system, BHTree, new_king_model
+from amuse.units import units
 from scipy.optimize import differential_evolution
 import matplotlib.pyplot as plt
 
 # Configure logging
 logging.basicConfig(
-    filename="de_progress.log",
+    filename="de_cluster.log",
     level=logging.INFO,
     format="%(asctime)s - %(message)s",
 )
 logger = logging.getLogger()
 
-# Load Gaia target (subsampled)
-target = np.load("target_bar_gaia.npy")[:1000]  # N = 1000
+# Target velocity dispersion (M13 from Harris Catalog)
+target_sigma = 5.0  # km/s
 
-def run_amuse(initial_conditions):
-    N = len(initial_conditions) // 6
-    particles = Particles(N)
-    ic = initial_conditions.reshape(N, 6)
-    particles.position = ic[:, :3] | nbody_system.length
-    particles.velocity = ic[:, 3:] | nbody_system.speed
-    particles.mass = (1.0 / N) | nbody_system.mass
-
-    sim = ph4(number_of_workers=2)  # Limit to 2 cores
-    sim.parameters.epsilon_squared = (0.01 | nbody_system.length)**2
+def run_king(params):
+    """Simulate a King model and return velocity dispersion"""
+    W0, r_c = params
+    # Create King model: N=100, total mass=1e5 Msun, core radius=r_c parsec
+    converter = nbody_system.nbody_to_si(1e5 | units.MSun, r_c | units.parsec)
+    particles = new_king_model(100, W0, convert_nbody=converter)
+    
+    # Evolve with BHTree for a short time to stabilize
+    sim = BHTree(converter)
+    sim.parameters.epsilon_squared = (0.01 | units.parsec)**2
     sim.particles.add_particles(particles)
-    sim.evolve_model(1.0 | nbody_system.time)
-    final_pos = sim.particles.position.value_in(nbody_system.length)
-    final_vel = sim.particles.velocity.value_in(nbody_system.speed)
+    sim.evolve_model(0.1 | units.Myr)  # ~0.1 Myr to settle
+    sigma = np.std(sim.particles.velocity.value_in(units.kms))  # km/s
     sim.stop()
-    return np.column_stack((final_pos, final_vel))
+    return sigma, particles.position.value_in(units.parsec), particles.velocity.value_in(units.kms)
 
-def fitness(ic):
-    final = run_amuse(ic)
-    return np.mean((final - target)**2)
+def fitness(params):
+    """Fitness: difference between simulated and target dispersion"""
+    sigma, _, _ = run_king(params)
+    return (sigma - target_sigma)**2
 
 def callback(xk, convergence):
-    """Log progress every few iterations"""
+    """Log DE progress"""
     current_fitness = fitness(xk)
-    if callback.iteration % 5 == 0:  # Log every 5th iteration
-        logger.info(f"Iteration {callback.iteration}: Best Fitness = {current_fitness:.4e}, Convergence = {convergence:.4f}")
+    sigma = run_king(xk)[0]
+    if callback.iteration % 5 == 0:  # Log every 5 iterations
+        logger.info(f"Iteration {callback.iteration}: W0={xk[0]:.2f}, r_c={xk[1]:.2f} pc, Sigma={sigma:.2f} km/s, Fitness={current_fitness:.4e}")
     callback.iteration += 1
 
-callback.iteration = 0  # Initialize iteration counter
+callback.iteration = 0
 
 # DE optimization
-bounds = [(-5, 5)] * (3 * 1000) + [(-100, 100)] * (3 * 1000)
+bounds = [(1, 10), (0.1, 2)]  # W0 (1–10), r_c (0.1–2 parsec)
 logger.info("Starting DE optimization")
 result = differential_evolution(
     fitness,
     bounds,
-    popsize=5,
-    maxiter=10,
-    workers=4,
+    popsize=15,
+    maxiter=50,
+    workers=1,  # Single worker to keep memory low
     callback=callback,
 )
-logger.info(f"DE completed: Success = {result.success}, Best Fitness = {result.fun:.4e}")
-best_ic = result.x
-np.save("best_ic.npy", best_ic)
+logger.info(f"DE completed: Success={result.success}, W0={result.x[0]:.2f}, r_c={result.x[1]:.2f} pc, Fitness={result.fun:.4e}")
+
+# Final simulation with best parameters
+best_sigma, best_pos, best_vel = run_king(result.x)
+logger.info(f"Best Sigma: {best_sigma:.2f} km/s")
 
 # Visualization
-N = 1000
-initial = best_ic.reshape(N, 6)
-final = run_amuse(best_ic)
+plt.figure(figsize=(10, 5))
 
-plt.figure(figsize=(15, 5))
-plt.subplot(131)
-plt.scatter(initial[:, 0], initial[:, 1], s=1, c='blue', alpha=0.5, label='Initial')
-plt.xlabel('x (nbody)')
-plt.ylabel('y (nbody)')
-plt.title('Initial Conditions')
-plt.legend()
+# Position scatter (x vs y)
+plt.subplot(121)
+plt.scatter(best_pos[:, 0], best_pos[:, 1], s=5, c='blue', alpha=0.5)
+plt.xlabel('x (pc)')
+plt.ylabel('y (pc)')
+plt.title(f'Cluster Positions (W0={result.x[0]:.2f}, r_c={result.x[1]:.2f} pc)')
 
-plt.subplot(132)
-plt.scatter(final[:, 0], final[:, 1], s=1, c='red', alpha=0.5, label='Final')
-plt.scatter(target[:, 0], target[:, 1], s=1, c='green', alpha=0.2, label='Target')
-plt.xlabel('x (nbody)')
-plt.ylabel('y (nbody)')
-plt.title('Final vs Target Positions')
-plt.legend()
-
-plt.subplot(133)
-plt.scatter(final[:, 3], final[:, 4], s=1, c='red', alpha=0.5, label='Final')
-plt.scatter(target[:, 3], target[:, 4], s=1, c='green', alpha=0.2, label='Target')
-plt.xlabel('vx (nbody)')
-plt.ylabel('vy (nbody)')
-plt.title('Final vs Target Velocities')
+# Velocity histogram
+plt.subplot(122)
+plt.hist(best_vel.flatten(), bins=20, color='red', alpha=0.7)
+plt.axvline(target_sigma, color='green', linestyle='--', label=f'Target σ={target_sigma} km/s')
+plt.xlabel('Velocity (km/s)')
+plt.ylabel('Count')
+plt.title(f'Velocity Dispersion (σ={best_sigma:.2f} km/s)')
 plt.legend()
 
 plt.tight_layout()
-plt.savefig("bar_formation.png")
+plt.savefig("cluster_result.png")
 plt.show()
