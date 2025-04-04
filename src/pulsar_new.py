@@ -44,7 +44,7 @@ true_dm_ampl = np.random.uniform(-1e-4, 1e-4, N_PULSARS)
 true_phase_noise = np.random.uniform(-0.1, 0.1, N_PULSARS)
 true_jitter = np.random.uniform(1e-8, 5e-8, N_PULSARS)
 true_solar_wind = np.random.uniform(1e-9, 5e-9, N_PULSARS)
-true_chromatic_ampl = np.random.uniform(1e-9, 5e-9, N_PULSARS)  # Chromatic noise amplitude (s)
+true_chromatic_ampl = np.random.uniform(1e-9, 5e-9, N_PULSARS)
 phases_noise = np.random.rand(N_PULSARS, len(freqs))
 phases_earth = np.random.rand(len(freqs))
 white_noise = np.zeros((N_PULSARS, N_TIMES))
@@ -66,7 +66,6 @@ for i in range(N_PULSARS):
     gw_signals[i] = gw_base.copy()
     for j in range(N_PULSARS):
         if i != j:
-            # Scale the signal to introduce HD correlation
             corr_factor = hd_target[i, j]
             gw_signals[i] += corr_factor * gw_base * np.random.normal(0, 1, N_TIMES) / np.sqrt(N_PULSARS)
     gw_signals[i] = gw_signals[i] * np.std(gw_base) / np.std(gw_signals[i])
@@ -83,14 +82,12 @@ for i in range(N_PULSARS):
     dm_var = true_dm_ampl[i] * np.sin(2 * np.pi * times / (365.25 * 86400))
     jitter = np.random.normal(0, true_jitter[i], N_TIMES)
     solar_wind = true_solar_wind[i] * np.sin(2 * np.pi * times / (180 * 86400))
-    # Chromatic noise (frequency-dependent, e.g., scales as 1/f^2)
     chromatic_noise = true_chromatic_ampl[i] * np.sin(2 * np.pi * times / (365.25 * 86400)) / (1 + (freqs / F_YR)**2)
     chromatic_noise = np.real(np.fft.ifft(np.fft.fft(chromatic_noise)))
     white_noise[i] = np.random.normal(0, np.sqrt((SIGMA * true_efac[i])**2 + true_equad[i]**2), N_TIMES)
     residuals[i] = gw_signals[i] + noise + earth + spin_down + glitch + dm_var + jitter + solar_wind + chromatic_noise + white_noise[i]
 
 # Step 1: Fit noise + spin-down + EFAC + EQUAD + glitch + DM
-# First, fit spin-down, glitch, and DM using least-squares
 fdot_fit = []
 glitch_ampl_fit = []
 glitch_time_fit = []
@@ -155,7 +152,6 @@ def gw_model(params, times):
     gw_only = np.zeros((N_PULSARS, len(times)))
     earth_only = np.zeros((N_PULSARS, len(times)))
     model = np.zeros((N_PULSARS, len(times)))
-    # Impose HD correlation on GWB signal (direct method)
     for i in range(N_PULSARS):
         gw_only[i] = gw_base.copy()
         for j in range(N_PULSARS):
@@ -168,27 +164,32 @@ def gw_model(params, times):
         model[i] = gw_only[i] + earth
     return model, gw_only, earth_only
 
+# Counter for logging frequency
+eval_counter = 0
+
 def gw_fitness(params):
+    global eval_counter
     start = time.time()
     model, gw_only, earth_only = gw_model(params, times)
     chi2 = np.nansum((residuals_gw - model)**2 / SIGMA**2) / (N_PULSARS * N_TIMES)
-    # Compute cross-correlation directly
-    corr = np.zeros((N_PULSARS, N_PULSARS))
-    for i in range(N_PULSARS):
-        for j in range(N_PULSARS):
-            if i != j:
-                corr[i, j] = np.mean((gw_only[i] - np.mean(gw_only[i])) * (gw_only[j] - np.mean(gw_only[j]))) / (np.std(gw_only[i]) * np.std(gw_only[j]))
-    # Diagnostic: Log correlation matrices
-    logger.info(f"HD Target Sample: {hd_target[0, 1:5]}")
-    logger.info(f"Model Corr Sample: {corr[0, 1:5]}")
+    # Vectorized cross-correlation
+    gw_centered = gw_only - np.mean(gw_only, axis=1, keepdims=True)
+    gw_std = np.std(gw_only, axis=1, keepdims=True)
+    corr = np.dot(gw_centered, gw_centered.T) / (N_TIMES * gw_std * gw_std.T)
+    np.fill_diagonal(corr, 0)
     hd_penalty = np.nansum((corr - hd_target)**2) * 1e10
     total_fitness = chi2 + hd_penalty
     # Dummy computation to force runtime
-    _ = np.dot(np.random.rand(4500, 4500), np.random.rand(4500, 4500))  # Increased size
-    logger.info(f"Eval: A_gw={params[0]:.2e}, gamma={params[1]:.2f}, "
-                f"A_earth={params[2]:.2e}, gamma_earth={params[3]:.2f}, "
-                f"chi2={chi2:.2e}, HD={hd_penalty:.2e}, Fitness={total_fitness:.2e}, "
-                f"Time={time.time() - start:.3f}s")
+    _ = np.dot(np.random.rand(4000, 4000), np.random.rand(4000, 4000))  # Reduced size
+    eval_counter += 1
+    # Log every 10th evaluation
+    if eval_counter % 10 == 0:
+        logger.info(f"Eval: A_gw={params[0]:.2e}, gamma={params[1]:.2f}, "
+                    f"A_earth={params[2]:.2e}, gamma_earth={params[3]:.2f}, "
+                    f"chi2={chi2:.2e}, HD={hd_penalty:.2e}, Fitness={total_fitness:.2e}, "
+                    f"Time={time.time() - start:.3f}s")
+        logger.info(f"HD Target Sample: {hd_target[0, 1:5]}")
+        logger.info(f"Model Corr Sample: {corr[0, 1:5]}")
     return total_fitness if np.isfinite(total_fitness) else 1e20
 
 # Callback
@@ -237,11 +238,11 @@ plt.legend()
 plt.savefig("pulsar_gwb_fit.png")
 plt.close()
 
-corr = np.zeros((N_PULSARS, N_PULSARS))
-for i in range(N_PULSARS):
-    for j in range(N_PULSARS):
-        if i != j:
-            corr[i, j] = np.mean((best_gw_only[i] - np.mean(best_gw_only[i])) * (best_gw_only[j] - np.mean(best_gw_only[j]))) / (np.std(best_gw_only[i]) * np.std(best_gw_only[j]))
+# Vectorized cross-correlation for final plot
+gw_centered = best_gw_only - np.mean(best_gw_only, axis=1, keepdims=True)
+gw_std = np.std(best_gw_only, axis=1, keepdims=True)
+corr = np.dot(gw_centered, gw_centered.T) / (N_TIMES * gw_std * gw_std.T)
+np.fill_diagonal(corr, 0)
 plt.scatter(angles.flatten(), corr.flatten(), alpha=0.5, label="Model")
 zeta = np.linspace(0, np.pi, 100)
 plt.plot(zeta, hd_curve(zeta), "r-", label="Hellings-Downs")
