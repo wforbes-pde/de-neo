@@ -58,7 +58,7 @@ phases_noise = np.random.rand(N_PULSARS, len(freqs))
 phases_earth = np.random.rand(len(freqs))
 white_noise = np.zeros((N_PULSARS, N_TIMES))
 
-# Generate GWB with proper HD correlation (updated to fix normalization)
+# Generate GWB with proper HD correlation (unchanged)
 power_gw = np.zeros_like(freqs, dtype=float)
 power_gw[mask] = true_A_gw**2 / (12 * np.pi**2) * (np.abs(freqs[mask]) / F_YR)**(-true_gamma)
 gw_base = np.real(np.fft.ifft(np.sqrt(power_gw) * np.exp(2j * np.pi * np.random.rand(len(freqs)))))
@@ -156,8 +156,8 @@ for i in range(N_PULSARS):
     noise = np.real(np.fft.ifft(np.sqrt(power_noise) * np.exp(2j * np.pi * (phases_noise[i] + true_phase_noise[i]))))
     residuals_gw[i] -= noise
 
-# Step 2: Fit GWB + Earth term (updated to fix normalization)
-def gw_model(params, times, n_realizations=75):
+# Step 2: Fit GWB + Earth term (updated with increased realizations)
+def gw_model(params, times, n_realizations=100):  # Increased to 100
     A_gw, gamma, A_earth, gamma_earth = params
     freqs = np.fft.fftfreq(len(times), times[1] - times[0])
     mask = freqs != 0
@@ -166,34 +166,50 @@ def gw_model(params, times, n_realizations=75):
     power_earth = np.zeros_like(freqs, dtype=float)
     power_earth[mask] = A_earth**2 / (12 * np.pi**2) * (np.abs(freqs[mask]) / F_YR)**(-gamma_earth)
     gw_base = np.real(np.fft.ifft(np.sqrt(power_gw) * np.exp(2j * np.pi * np.random.rand(len(freqs)))))
-    # Recompute hd_target with correct normalization
+    
+    # Compute HD target matrix for Cholesky decomposition (without normalization)
     hd_target_local = np.zeros((N_PULSARS, N_PULSARS))
     for i in range(N_PULSARS):
         for j in range(N_PULSARS):
             zeta = angles[i, j]
             hd_target_local[i, j] = 1.0 if i == j else hd_curve(zeta)
-    off_diag = hd_target_local[~np.eye(N_PULSARS, dtype=bool)]
-    min_hd = np.min(off_diag)
-    max_hd = np.max(off_diag)
-    hd_target_local[~np.eye(N_PULSARS, dtype=bool)] = (off_diag - min_hd) / (max_hd - min_hd)
+    
+    # Ensure positive definiteness before Cholesky
     eigenvalues, eigenvectors = np.linalg.eigh(hd_target_local)
     eigenvalues = np.where(eigenvalues < 0, 1e-12, eigenvalues)
     hd_target_local = eigenvectors @ np.diag(eigenvalues) @ eigenvectors.T
     hd_target_local = (hd_target_local + hd_target_local.T) / 2
+    
+    # Debug: Check eigenvalues before Cholesky
+    eigenvalues = np.linalg.eigvalsh(hd_target_local)
+    logger.info(f"Eigenvalues before Cholesky: {eigenvalues}")
+    print(f"Eigenvalues before Cholesky: {eigenvalues}")
+    
+    # Perform Cholesky decomposition
     L = np.linalg.cholesky(hd_target_local)
+    
+    # Generate correlated GW signals
     gw_only = np.zeros((N_PULSARS, len(times)))
     for _ in range(n_realizations):
         random_signals = np.random.normal(0, 1, (N_PULSARS, len(times)))
         gw_temp = np.dot(L, random_signals)
         gw_only += gw_temp / n_realizations
     gw_only = gw_only / np.std(gw_only) * A_gw
+    
+    # Compute HD target matrix for fitness (with normalization)
+    hd_target_normalized = hd_target_local.copy()
+    off_diag = hd_target_normalized[~np.eye(N_PULSARS, dtype=bool)]
+    min_hd = np.min(off_diag)
+    max_hd = np.max(off_diag)
+    hd_target_normalized[~np.eye(N_PULSARS, dtype=bool)] = (off_diag - min_hd) / (max_hd - min_hd)
+    
     earth_only = np.zeros((N_PULSARS, len(times)))
     model = np.zeros((N_PULSARS, len(times)))
     for i in range(N_PULSARS):
         earth = np.real(np.fft.ifft(np.sqrt(power_earth) * np.exp(2j * np.pi * phases_earth)))
         earth_only[i] = earth / np.std(earth) * A_earth
         model[i] = gw_only[i] + earth_only[i]
-    return model, gw_only, earth_only, hd_target_local
+    return model, gw_only, earth_only, hd_target_normalized
 
 # Counter for logging frequency
 eval_counter = 0
@@ -207,19 +223,20 @@ def gw_fitness(params):
     gw_std = np.std(gw_only, axis=1, keepdims=True)
     corr = np.dot(gw_centered, gw_centered.T) / (N_TIMES * gw_std * gw_std.T)
     np.fill_diagonal(corr, 1)
-    # Normalize by matching the range (same as plotting section)
+    # Normalize model correlations to range [0, 1]
     corr_off_diag = corr[~np.eye(N_PULSARS, dtype=bool)]
     min_corr = np.min(corr_off_diag)
     max_corr = np.max(corr_off_diag)
     corr_off_diag = (corr_off_diag - min_corr) / (max_corr - min_corr)
+    # Apply shape correction to match HD curve
     angles_off_diag = angles[~np.eye(N_PULSARS, dtype=bool)]
     hd_theoretical = hd_curve(angles_off_diag)
-    min_hd = np.min(hd_theoretical)
-    max_hd = np.max(hd_theoretical)
-    hd_theoretical = (hd_theoretical - min_hd) / (max_hd - min_hd)
+    min_theoretical = np.min(hd_theoretical)
+    max_theoretical = np.max(hd_theoretical)
+    hd_theoretical = (hd_theoretical - min_theoretical) / (max_theoretical - min_theoretical)
     correction_factor = hd_theoretical / np.clip(corr_off_diag, 1e-10, None)
     corr[~np.eye(N_PULSARS, dtype=bool)] = corr_off_diag * correction_factor
-    hd_penalty = np.nansum((corr - hd_target_local)**2) * 1e8  # Reduced penalty weight
+    hd_penalty = np.nansum((corr - hd_target_local)**2) * 5e6  # Reduced penalty weight
     total_fitness = chi2 + hd_penalty
     eval_counter += 1
     if eval_counter % 10 == 0:
@@ -306,9 +323,9 @@ max_corr = np.max(corr_off_diag)
 corr_off_diag = (corr_off_diag - min_corr) / (max_corr - min_corr)
 angles_off_diag = angles[~np.eye(N_PULSARS, dtype=bool)]
 hd_theoretical = hd_curve(angles_off_diag)
-min_hd = np.min(hd_theoretical)
-max_hd = np.max(hd_theoretical)
-hd_theoretical = (hd_theoretical - min_hd) / (max_hd - min_hd)
+min_theoretical = np.min(hd_theoretical)
+max_theoretical = np.max(hd_theoretical)
+hd_theoretical = (hd_theoretical - min_theoretical) / (max_theoretical - min_theoretical)
 correction_factor = hd_theoretical / np.clip(corr_off_diag, 1e-10, None)
 corr[~np.eye(N_PULSARS, dtype=bool)] = corr_off_diag * correction_factor
 plt.scatter(angles.flatten(), corr.flatten(), alpha=0.5, label="Model")
