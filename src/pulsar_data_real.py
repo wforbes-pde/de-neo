@@ -161,24 +161,39 @@ def gw_fitness(params):
     gw_std = np.std(gw_only, axis=1, keepdims=True)
     corr = np.dot(gw_centered, gw_centered.T) / (N_TIMES * gw_std * gw_std.T)
     np.fill_diagonal(corr, 1)
-    corr_off_diag = corr[~np.eye(N_PULSARS, dtype=bool)]
+    
+    # Extract upper triangle of corr (excluding diagonal)
+    i, j = np.triu_indices(N_PULSARS, k=1)  # Indices for upper triangle
+    corr_off_diag = corr[i, j]  # Shape: (190,)
     min_corr = np.min(corr_off_diag)
     max_corr = np.max(corr_off_diag)
     corr_off_diag = (corr_off_diag - min_corr) / (max_corr - min_corr)
+    
+    # Angles and HD curve (already correct with 190 elements)
     angles_off_diag = np.zeros(N_PULSARS * (N_PULSARS - 1) // 2)
     k = 0
-    for i in range(N_PULSARS):
-        for j in range(i + 1, N_PULSARS):
+    for i_idx in range(N_PULSARS):
+        for j_idx in range(i_idx + 1, N_PULSARS):
             angles_off_diag[k] = angles[k]
             k += 1
     hd_theoretical = hd_curve(angles_off_diag)
     min_theoretical = np.min(hd_theoretical)
     max_theoretical = np.max(hd_theoretical)
     hd_theoretical = (hd_theoretical - min_theoretical) / (max_theoretical - min_theoretical)
+    
+    # Compute correction factor
     correction_factor = hd_theoretical / np.clip(corr_off_diag, 1e-10, None)
-    corr[~np.eye(N_PULSARS, dtype=bool)] = corr_off_diag * correction_factor
+    corrected_values = corr_off_diag * correction_factor  # Shape: (190,)
+    
+    # Assign to both upper and lower triangles symmetrically
+    corr[i, j] = corrected_values  # Upper triangle
+    corr[j, i] = corrected_values  # Lower triangle (symmetry)
+    
+    # Compute HD penalty
     hd_penalty = np.nansum((corr - hd_target_local)**2) * 5e6
     total_fitness = chi2 + hd_penalty
+    
+    # Logging
     eval_counter += 1
     if eval_counter % 10 == 0:
         logger.info(f"Eval {eval_counter}: A_gw={params[0]:.2e}, gamma={params[1]:.2f}, "
