@@ -243,87 +243,6 @@ def hd_curve(zeta):
     return 1.5 * x * np.log(x) - 0.25 * x + 0.5
 
 
-def gw_model(params, times, L, freqs, mask, phases_earth, N_PULSARS, N_TIMES, F_YR, logger, rng,
-             n_realizations):
-    A_gw, gamma, A_earth, gamma_earth = params[:4]
-    red_noise_params = params[4:]
-    A_red = red_noise_params[::2]
-    gamma_red = red_noise_params[1::2]
-
-    power_gw = np.zeros_like(freqs, dtype=float)
-    freq_cutoff = 1 / (10 * 365.25 * 86400)  # Cutoff at 10 years
-    mask_gw = mask & (np.abs(freqs) > freq_cutoff)
-    power_gw[mask_gw] = A_gw**2 / (12 * np.pi**2) * (np.abs(freqs[mask_gw]) / F_YR)**(-gamma)
-
-    power_earth = np.zeros_like(freqs, dtype=float)
-    power_earth[mask] = A_earth**2 / (12 * np.pi**2) * (np.abs(freqs[mask]) / F_YR)**(-gamma_earth)
-
-    random_signals = rng.normal(0, 1, (n_realizations, N_PULSARS, N_TIMES))
-    gw_temp = np.tensordot(L, random_signals, axes=([1], [1]))
-    gw_only = np.mean(gw_temp, axis=1)
-    gw_only_std = np.std(gw_only, axis=1)
-    logger.info(f"GWB signal std per pulsar: {gw_only_std}")
-    gw_only = gw_only / np.std(gw_only, axis=1, keepdims=True) * A_gw
-
-    earth = np.real(np.fft.ifft(np.sqrt(power_earth) * np.exp(2j * np.pi * phases_earth)))
-    earth_only = np.tile(earth / np.std(earth) * A_earth, (N_PULSARS, 1))
-
-    power_red = np.zeros((N_PULSARS, N_TIMES), dtype=float)
-    for i in range(N_PULSARS):
-        power_red[i, mask] = A_red[i]**2 / (12 * np.pi**2) * (np.abs(freqs[mask]) / F_YR)**(-gamma_red[i])
-    phases_red = rng.random((N_PULSARS, N_TIMES))
-    red_noise = np.real(np.fft.ifft(np.sqrt(power_red) * np.exp(2j * np.pi * phases_red), axis=1))
-    red_noise_only = red_noise / np.std(red_noise, axis=1, keepdims=True) * A_red[:, np.newaxis]
-
-    return gw_only, earth_only, red_noise_only
-
-def gw_fitness(params, times, residuals_gw, uncertainties, data_weights, data_std, L, freqs, mask, phases_earth, 
-               hd_theoretical_normalized, i_indices, j_indices, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations):
-    start = time.time()
-    A_gw, gamma, A_earth, gamma_earth = params[:4]
-    gw_only, earth_only, red_noise_only = gw_model(params, times, L, freqs, mask, phases_earth, N_PULSARS, N_TIMES,
-                                                   F_YR, logger, rng, n_realizations)
-    
-    logger.info(f"gw_only shape: {gw_only.shape}")
-    logger.info(f"earth_only shape: {earth_only.shape}")
-    logger.info(f"red_noise_only shape: {red_noise_only.shape}")
-
-    model = np.zeros((N_PULSARS, N_TIMES))
-    for i in range(N_PULSARS):
-        gw_std = np.std(gw_only[i])
-        earth_std = np.std(earth_only[i])
-        red_std = np.std(red_noise_only[i])
-        target_std = data_std[i] / 3
-        if gw_std > 0:
-            gw_only[i] = gw_only[i] * (target_std / gw_std)
-        if earth_std > 0:
-            earth_only[i] = earth_only[i] * (target_std / earth_std)
-        if red_std > 0:
-            red_noise_only[i] = red_noise_only[i] * (target_std / red_std)
-        model[i] = gw_only[i] + earth_only[i] + red_noise_only[i]
-
-    white_noise = rng.normal(0, data_std[:, np.newaxis] / 8, (N_PULSARS, N_TIMES))
-    model_with_noise = model + white_noise
-
-    chi2 = np.sum(data_weights * np.nansum((residuals_gw - model_with_noise)**2 / uncertainties**2, axis=1)) / (N_PULSARS * N_TIMES)
-
-    gw_centered = gw_only - np.mean(gw_only, axis=1, keepdims=True)
-    gw_std = np.std(gw_only, axis=1, keepdims=True)
-    corr = np.dot(gw_centered, gw_centered.T) / (N_TIMES * gw_std * gw_std.T)
-    corr[i_indices, j_indices] = corr[i_indices, j_indices]
-
-    corr_off_diag = corr[i_indices, j_indices]
-    corr_mean = np.mean(corr_off_diag)
-    corr_std = np.std(corr_off_diag)
-    corr_off_diag_normalized = (corr_off_diag - corr_mean) / (corr_std + 1e-10)
-
-    hd_penalty = np.sum((corr_off_diag_normalized - hd_theoretical_normalized)**2) * 1e3
-
-    earth_penalty = 1e5 * (A_earth / A_gw) if A_earth > A_gw else 0
-
-    total_fitness = chi2 + hd_penalty + earth_penalty
-
-    return total_fitness, chi2, hd_penalty, earth_penalty, start
 
 
 # Convert arrays to shared memory to reduce pickling overhead
@@ -345,16 +264,6 @@ def to_shared_array(arr):
     return shared_arr, shared_arr_np
 
 
-
-def callback(xk, convergence, logger):
-    elapsed_time = time.time() - callback.start_time
-    logger.info(f"Iter {callback.iter}: Best A_gw={xk[0]:.2e}, gamma={xk[1]:.2f}, "
-                f"Convergence={convergence:.2e}, Time={elapsed_time:.1f}s")
-    callback.iter += 1
-
-
-# X_W0 = np.random.uniform(low=low_, high=high_, size=(total,m,n))
-
 def initial_population(bounds, NP):
     
     m = len(bounds)
@@ -368,7 +277,131 @@ def initial_population(bounds, NP):
 
     return params
 
+
+
+
+def callback(xk, convergence, logger):
+    elapsed_time = time.time() - callback.start_time
+    fitness, chi2, hd_penalty, earth_penalty, _ = gw_fitness(
+        xk, *callback.args, return_full=True
+    )
+    gw_model_args = (xk, callback.args[0], callback.args[5], callback.args[6], callback.args[7], callback.args[8],
+                     callback.args[12], callback.args[13], callback.args[14], callback.args[15], callback.args[16], callback.args[17])
+    residuals_diff = callback.args[1] - gw_model(*gw_model_args)[0]
+    logger.info(f"Iteration {callback.iter + 1}/3: A_gw={xk[0]:.2e}, gamma={xk[1]:.2f}, "
+                f"A_earth={xk[2]:.2e}, gamma_earth={xk[3]:.2f}, "
+                f"Fitness={fitness:.2e}, chi2={chi2:.2e}, hd_penalty={hd_penalty:.2e}, "
+                f"Residuals_diff_std={np.nanstd(residuals_diff):.2e}, "
+                f"Convergence={convergence:.2e}, Time={elapsed_time:.1f}s")
+    callback.iter += 1
+    return False
+
+def gw_model(params, times, L, freqs, mask, phases_earth, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations):
+    A_gw, gamma, A_earth, gamma_earth = params[:4]
+    red_noise_params = params[4:]
+    red_noise_params = red_noise_params.reshape((N_PULSARS, 2))
+    A_red = red_noise_params[:, 0]
+    gamma_red = red_noise_params[:, 1]
     
+    random_signals = rng.normal(0, 1, (n_realizations, N_PULSARS, N_TIMES))
+    random_signals = np.tensordot(L, random_signals, axes=(1, 1)).transpose(1, 0, 2)
+    
+    gw_only = np.zeros((N_PULSARS, N_TIMES))
+    earth_only = np.zeros((N_PULSARS, N_TIMES))
+    red_noise_only = np.zeros((N_PULSARS, N_TIMES))
+    
+    freqs_masked = freqs[mask]
+    
+    signals = random_signals.reshape(n_realizations * N_PULSARS, N_TIMES)
+    signals_fft = np.fft.fft(signals, axis=1)[:, mask]
+    psd_gw = (A_gw**2 / 12 / np.pi**2) * (np.abs(freqs_masked) / F_YR)**(-gamma) * F_YR**3
+    psd_gw = np.maximum(psd_gw, 1e-9)
+    signals_fft *= np.sqrt(psd_gw)
+    signals_fft_full = np.zeros((n_realizations * N_PULSARS, N_TIMES), dtype=complex)
+    signals_fft_full[:, mask] = signals_fft
+    signals = np.fft.ifft(signals_fft_full, n=N_TIMES, axis=1).real
+    signals = signals.reshape(n_realizations, N_PULSARS, N_TIMES)
+    gw_only = np.mean(signals, axis=0)
+    
+    for i in range(N_PULSARS):
+        signal = rng.normal(0, 1, N_TIMES)
+        signal_fft_full = np.fft.fft(signal)
+        signal_fft = signal_fft_full[mask]
+        psd_earth = (A_earth**2 / 12 / np.pi**2) * (np.abs(freqs_masked) / F_YR)**(-gamma_earth) * F_YR**3
+        psd_earth = np.maximum(psd_earth, 1e-9)
+        signal_fft = signal_fft * np.sqrt(psd_earth) * np.exp(1j * phases_earth[mask])
+        signal_fft_full[mask] = signal_fft
+        signal = np.fft.ifft(signal_fft_full, n=N_TIMES).real
+        earth_only[i] = signal
+        
+        signal = rng.normal(0, 1, N_TIMES)
+        signal_fft_full = np.fft.fft(signal)
+        signal_fft = signal_fft_full[mask]
+        psd_red = (A_red[i]**2 / 12 / np.pi**2) * (np.abs(freqs_masked) / F_YR)**(-gamma_red[i]) * F_YR**3
+        psd_red = np.maximum(psd_red, 1e-9)
+        signal_fft = signal_fft * np.sqrt(psd_red)
+        signal_fft_full[mask] = signal_fft
+        signal = np.fft.ifft(signal_fft_full, n=N_TIMES).real
+        red_noise_only[i] = signal
+    
+    if np.any(np.std(gw_only, axis=1) < 1e-12):
+        logger.debug(f"Low gw_only std: {np.std(gw_only, axis=1)}")
+    
+    return gw_only, earth_only, red_noise_only
+
+def gw_fitness(params, times, residuals_gw, uncertainties, data_weights, data_std, L, freqs, mask, phases_earth, 
+               hd_theoretical, i_indices, j_indices, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations,
+               return_full=False):
+    gw_fitness.eval_count = getattr(gw_fitness, 'eval_count', 0) + 1
+    if gw_fitness.eval_count <= 5:
+        logger.info(f"Fitness evaluation {gw_fitness.eval_count}")
+    
+    start = time.time()
+    A_gw, gamma, A_earth, gamma_earth = params[:4]
+    gw_only, earth_only, red_noise_only = gw_model(params, times, L, freqs, mask, phases_earth, N_PULSARS, N_TIMES,
+                                                   F_YR, logger, rng, n_realizations)
+    
+    if gw_fitness.eval_count <= 5:
+        logger.info(f"gw_only shape: {gw_only.shape}")
+        logger.info(f"earth_only shape: {earth_only.shape}")
+        logger.info(f"red_noise_only shape: {red_noise_only.shape}")
+        logger.info(f"GWB signal std per pulsar: {np.std(gw_only, axis=1)}")
+        logger.debug(f"Raw gw_only sample: {gw_only[0][:5]}")
+    
+    model = gw_only + earth_only + red_noise_only
+    model = model - np.mean(model, axis=1, keepdims=True)
+
+    white_noise = rng.normal(0, data_std[:, np.newaxis] / 8, (N_PULSARS, N_TIMES))
+    model_with_noise = model + white_noise
+
+    uncertainties_safe = np.maximum(uncertainties, 3e-6)
+    residuals_diff = residuals_gw - model_with_noise
+    chi2 = np.sum(data_weights * np.nansum((residuals_diff)**2 / uncertainties_safe**2, axis=1)) / (N_PULSARS * N_TIMES) * 1e2
+    if gw_fitness.eval_count <= 5:
+        logger.debug(f"Residuals diff max: {np.nanmax(np.abs(residuals_diff))}")
+        logger.debug(f"Chi2 raw sum: {np.sum(data_weights * np.nansum((residuals_diff)**2 / uncertainties_safe**2, axis=1))}")
+
+    gw_centered = gw_only - np.mean(gw_only, axis=1, keepdims=True)
+    gw_std = np.std(gw_only, axis=1, keepdims=True) + 1e-12
+    corr = np.dot(gw_centered, gw_centered.T) / (N_TIMES * gw_std * gw_std.T)
+    corr_off_diag = corr[i_indices, j_indices]
+    if gw_fitness.eval_count <= 5:
+        logger.debug(f"Corr off-diag sample: {corr_off_diag[:5]}")
+
+    hd_penalty = np.sum((corr_off_diag - hd_theoretical)**2) * 1e4
+
+    earth_penalty = 0
+
+    total_fitness = chi2 + hd_penalty + earth_penalty
+
+    if gw_fitness.eval_count <= 5:
+        logger.info(f"Fitness evaluation {gw_fitness.eval_count} took {time.time() - start:.2f}s")
+    
+    if return_full:
+        return total_fitness, chi2, hd_penalty, earth_penalty, start
+    return total_fitness
+
+# ... (rest unchanged)
 
 
 if __name__ == "__main__":

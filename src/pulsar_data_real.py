@@ -31,20 +31,28 @@ print(f"residuals shape: {residuals.shape}")
 print(f"uncertainties shape: {uncertainties.shape}")
 print(f"positions shape: {positions.shape}")
 
+# Log residuals stats
+logger.info(f"Residuals mean: {np.nanmean(residuals, axis=1)[:3]}")
+logger.info(f"Residuals std: {np.nanstd(residuals, axis=1)[:3]}")
+logger.info(f"Residuals sample: {residuals[0][:5]}")
+
 # Compute angular separations
 angles = compute_angular_separations(positions)
-logger.info(f"Angles sample: {angles[:4, :4]}")  # Log a small sample of the matrix
+logger.info(f"Angles sample: {angles[:4, :4]}")
 
 # Interpolate residuals
 times, residuals, uncertainties = interpolate_residuals(times, residuals, uncertainties, N_TIMES)
 
-# Plot Pulsar 20's raw residuals
-plt.figure(figsize=(12, 4))
-plt.plot(times[19] / (365.25 * 86400), residuals[19], label="Pulsar 20 Raw Residuals")
-plt.xlabel("Time (yr)")
-plt.ylabel("Residual (s)")
-plt.legend()
-plt.savefig("pulsar_20_raw_residuals.png")
+# Plot raw residuals
+plt.figure(figsize=(12, 8))
+for i in range(min(3, N_PULSARS)):
+    plt.subplot(3, 1, i+1)
+    plt.plot(times[i] / (365.25 * 86400), residuals[i], label=f"Pulsar {i+1} Raw")
+    plt.xlabel("Time (yr)")
+    plt.ylabel("Residual (s)")
+    plt.legend()
+plt.tight_layout()
+plt.savefig("pulsar_raw_residuals.png")
 plt.close()
 
 # Estimate data noise level
@@ -54,96 +62,115 @@ print(f"Uncertainties: {uncertainties[:3, 0]}")
 
 # Compute weights based on data length
 data_weights = np.array([np.sum(~np.isnan(residuals[i])) for i in range(N_PULSARS)], dtype=float)
-data_weights /= data_weights.sum()  # Normalize weights
+data_weights /= data_weights.sum()
 
-# Prepare residuals for GWB fitting
-residuals_gw = residuals.copy()
+# Center residuals
+residuals_gw = residuals - np.nanmean(residuals, axis=1, keepdims=True)
 
-# Step 2: Fit GWB + Earth term + Red Noise
+# Precompute static quantities
+hd_target = np.eye(N_PULSARS)
+for i in range(N_PULSARS):
+    for j in range(i + 1, N_PULSARS):
+        zeta = angles[i, j]
+        hd_value = hd_curve(zeta)
+        hd_target[i, j] = hd_value
+        hd_target[j, i] = hd_value
 
-if True:
+eigenvalues, eigenvectors = np.linalg.eigh(hd_target)
+logger.info(f"HD target matrix eigenvalues: {eigenvalues}")
+eigenvalues = np.where(eigenvalues < 0, 1e-12, eigenvalues)
+hd_target = eigenvectors @ np.diag(eigenvalues) @ eigenvectors.T
+hd_target = (hd_target + hd_target.T) / 2
+L = np.linalg.cholesky(hd_target)
 
-    # Precompute static quantities
-    hd_target = np.eye(N_PULSARS)
-    for i in range(N_PULSARS):
-        for j in range(i + 1, N_PULSARS):
-            zeta = angles[i, j]  # Use the 2D angles matrix directly
-            hd_value = hd_curve(zeta)
-            hd_target[i, j] = hd_value
-            hd_target[j, i] = hd_value
+i_indices, j_indices = np.triu_indices(N_PULSARS, k=1)
+hd_theoretical = hd_curve(angles[i_indices, j_indices])
 
-    # Ensure the matrix is positive semi-definite with debugging
-    eigenvalues, eigenvectors = np.linalg.eigh(hd_target)
-    logger.info(f"HD target matrix eigenvalues: {eigenvalues}")  # Debug: Log eigenvalues
-    eigenvalues = np.where(eigenvalues < 0, 1e-12, eigenvalues)
-    hd_target = eigenvectors @ np.diag(eigenvalues) @ eigenvectors.T
-    hd_target = (hd_target + hd_target.T) / 2
-    L = np.linalg.cholesky(hd_target)
+i_indices = i_indices.astype(np.int32)
+j_indices = j_indices.astype(np.int32)
 
-    # Precompute normalized HD theoretical values for angles
-    i_indices, j_indices = np.triu_indices(N_PULSARS, k=1)
-    hd_theoretical = hd_curve(angles[i_indices, j_indices])
-    # Improved normalization: Match mean and std of theoretical HD curve
-    hd_mean = np.mean(hd_theoretical)
-    hd_std = np.std(hd_theoretical)
-    hd_theoretical_normalized = (hd_theoretical - hd_mean) / hd_std
+rng = np.random.default_rng(seed=42)
 
-    # Precompute indices for off-diagonal elements
-    i_indices = i_indices.astype(np.int32)
-    j_indices = j_indices.astype(np.int32)
-
-    # Initialize random number generator for efficiency
-    rng = np.random.default_rng(seed=42)
-
-# Define bounds with constrained gamma_earth
-bounds = [(1e-16, 1e-14), (3, 5), (1e-16, 1e-14), (2, 4)]  # Constrained gamma_earth to 2–4
+# Define bounds
+bounds = [(5e-16, 5e-14), (3.5, 4.5), (5e-16, 5e-14), (2, 4)]
 for _ in range(N_PULSARS):
     bounds.append((1e-16, 3e-15))
     bounds.append((0.1, 3.0))
 
-# Run DE with explicit parallelization
+# Initialize population
+NPs=100
+maxiters = 200
+initpop = initial_population(bounds,NP=NPs)
+# Transpose to match expected shape (n_pop, n_params)
+initpop = initpop.T
+# initpop[:, 0] = rng.uniform(1e-15, 3e-15, initpop.shape[0])  # A_gw
+# initpop[:, 1] = rng.uniform(4.0, 4.5, initpop.shape[0])      # gamma
+# initpop[:, 2] = rng.uniform(1e-15, 3e-15, initpop.shape[0])  # A_earth
+# initpop[:, 3] = rng.uniform(2.5, 3.5, initpop.shape[0])      # gamma_earth
 
+# Run DE
+n_realizations = 100
 freqs = np.fft.fftfreq(N_TIMES, times[0, 1] - times[0, 0])
 mask = freqs != 0
+logger.info(f"freqs shape: {freqs.shape}, mask sum: {np.sum(mask)}")
 phases_earth = np.random.rand(N_TIMES)
 
-NP = 1
-n_realizations = 100
-params = initial_population(bounds, NP)[:, 0]  # Flatten to (44,)
-logger.info("Starting DE for GWB")
-total_fitness, chi2, hd_penalty, earth_penalty, start = gw_fitness(params, times, residuals_gw, uncertainties, data_weights, data_std, L, freqs, mask, phases_earth, 
-               hd_theoretical_normalized, i_indices, j_indices, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations)
+# Initialize callback attributes
+callback.start_time = time.time()
+callback.iter = 0
+gw_fitness.eval_count = 0
+callback.args = (times, residuals_gw, uncertainties, data_weights, data_std, L, freqs, mask, phases_earth,
+                 hd_theoretical, i_indices, j_indices, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations)
 
-logger.info(f"total fitness {total_fitness}")
+logger.info(f"Starting DE for GWB with popsize={NPs}, maxiter={maxiters}")
+result = differential_evolution(
+    gw_fitness,
+    bounds=bounds,
+    args=(times, residuals_gw, uncertainties, data_weights, data_std, L, freqs, mask, phases_earth,
+          hd_theoretical, i_indices, j_indices, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations),
+    popsize=NPs,
+    maxiter=maxiters,
+    workers=6,
+    tol=1e-4,
+    callback=lambda xk, convergence: callback(xk, convergence, logger),
+    disp=True,
+    seed=42,
+    polish=True,
+    init=initpop
+)
 
-
+# Extract results
+params = result.x
+total_fitness, chi2, hd_penalty, earth_penalty, start = gw_fitness(
+    params, times, residuals_gw, uncertainties, data_weights, data_std, L, freqs, mask, phases_earth,
+    hd_theoretical, i_indices, j_indices, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations,
+    return_full=True
+)
+logger.info(f"Final fitness: {total_fitness}, chi2: {chi2}, hd_penalty: {hd_penalty}, earth_penalty: {earth_penalty}")
 
 # Post-processing
 best_gw_only, best_earth_only, best_red_noise_only = gw_model(params, times, L, freqs, mask, phases_earth, N_PULSARS, N_TIMES,
-                                                   F_YR, logger, rng, n_realizations)
+                                                             F_YR, logger, rng, n_realizations)
 
-# create best
-model = np.zeros((N_PULSARS, N_TIMES))
+# Scale signals
 for i in range(N_PULSARS):
-    model[i] = best_gw_only[i] + best_earth_only[i] + best_red_noise_only[i]
+    target_std = data_std[i] / 5  # Lower scaling factor
+    for signal in [best_gw_only, best_earth_only, best_red_noise_only]:
+        signal_std = np.std(signal[i])
+        if signal_std > 0:
+            signal[i] *= target_std / signal_std
 
-best_model = model.copy()
+# Create best model
+best_model = best_gw_only + best_earth_only + best_red_noise_only
 
-# Scale the model to match the data's variance
-for i in range(N_PULSARS):
-    model_std = np.std(best_model[i])
-    if model_std > 0:
-        scaling_factor = data_std[i] / model_std
-        best_model[i] *= scaling_factor
-        best_gw_only[i] *= scaling_factor
-        best_earth_only[i] *= scaling_factor
-        best_red_noise_only[i] *= scaling_factor
+# Center model
+best_model = best_model - np.mean(best_model, axis=1, keepdims=True)
 
-# Plot fits in subplots (without smoothing)
+# Plot fits
 plt.figure(figsize=(12, 8))
 for i in range(min(3, N_PULSARS)):
     plt.subplot(3, 1, i+1)
-    plt.plot(times[i] / (365.25 * 86400), residuals[i], label=f"Pulsar {i+1} Data")
+    plt.plot(times[i] / (365.25 * 86400), residuals_gw[i], label=f"Pulsar {i+1} Data")
     plt.plot(times[i] / (365.25 * 86400), best_model[i], "--", label=f"Pulsar {i+1} Fit")
     plt.xlabel("Time (yr)")
     plt.ylabel("Residual (s)")
@@ -152,11 +179,11 @@ plt.tight_layout()
 plt.savefig("pulsar_gwb_fit.png")
 plt.close()
 
-# Plot residuals after subtracting fit
+# Plot residuals
 plt.figure(figsize=(12, 8))
 for i in range(min(3, N_PULSARS)):
     plt.subplot(3, 1, i+1)
-    plt.plot(times[i] / (365.25 * 86400), residuals[i] - best_model[i], label=f"Pulsar {i+1} Residual")
+    plt.plot(times[i] / (365.25 * 86400), residuals_gw[i] - best_model[i], label=f"Pulsar {i+1} Residual")
     plt.xlabel("Time (yr)")
     plt.ylabel("Residual - Fit (s)")
     plt.legend()
@@ -164,35 +191,32 @@ plt.tight_layout()
 plt.savefig("pulsar_gwb_residuals.png")
 plt.close()
 
-# Hellings-Downs correlation plot
+# Hellings-Downs correlation
 gw_centered = best_gw_only - np.mean(best_gw_only, axis=1, keepdims=True)
-gw_std = np.std(best_gw_only, axis=1, keepdims=True)
+gw_std = np.std(best_gw_only, axis=1, keepdims=True) + 1e-12
 corr = np.dot(gw_centered, gw_centered.T) / (N_TIMES * gw_std * gw_std.T)
-np.fill_diagonal(corr, 1)
+corr_off_diag = corr[i_indices, j_indices]
+angles_off_diag = angles[i_indices, j_indices]
 
-i, j = np.triu_indices(N_PULSARS, k=1)
-corr_off_diag = corr[i, j]
-min_corr = np.min(corr_off_diag)
-max_corr = np.max(corr_off_diag)
-corr_off_diag = (corr_off_diag - min_corr) / (max_corr - min_corr)
-
-angles_off_diag = angles[i, j]
-hd_theoretical = hd_curve(angles_off_diag)
-min_theoretical = np.min(hd_theoretical)
-max_theoretical = np.max(hd_theoretical)
-hd_theoretical = (hd_theoretical - min_theoretical) / (max_theoretical - min_theoretical)
-
-correction_factor = hd_theoretical / np.clip(corr_off_diag, 1e-10, None)
-corr[i, j] = corr_off_diag * correction_factor
-corr[j, i] = corr_off_diag * correction_factor
-
-plt.scatter(angles_off_diag * 180 / np.pi, corr[i, j], alpha=0.5, label="Model")
+plt.figure(figsize=(8, 6))
+plt.scatter(angles_off_diag * 180 / np.pi, corr_off_diag, alpha=0.5, label="Model")
 zeta = np.linspace(0, np.pi, 100)
 hd_values = hd_curve(zeta)
-hd_values = (hd_values - np.min(hd_values)) / (np.max(hd_values) - np.min(hd_values))
 plt.plot(zeta * 180 / np.pi, hd_values, "r-", label="Hellings-Downs")
 plt.xlabel("Angular Separation (degrees)")
 plt.ylabel("Correlation")
 plt.legend()
 plt.savefig("hd_correlation.png")
 plt.close()
+
+
+
+#n_realizations = 100
+# NP = 1
+# params = initial_population(bounds, NP)[:, 0]  # Flatten to (44,)
+# logger.info("Starting DE for GWB")
+# total_fitness, chi2, hd_penalty, earth_penalty, start = gw_fitness(params, times, residuals_gw, uncertainties, data_weights, data_std, L, freqs, mask, phases_earth, 
+#                hd_theoretical_normalized, i_indices, j_indices, N_PULSARS, N_TIMES, F_YR, logger, rng, n_realizations)
+
+# logger.info(f"total fitness {total_fitness}")
+
