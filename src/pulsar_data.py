@@ -2,6 +2,9 @@ import numpy as np
 from pint.models import get_model
 from pint.toa import get_TOAs
 from pint.fitter import WLSFitter
+from pint.residuals import Residuals  # Move import here
+from pint.models.glitch import Glitch
+from pint.models.parameter import MJDParameter, floatParameter
 import pint.logging
 import os
 import re
@@ -13,85 +16,385 @@ from functools import partial
 import pickle
 import time
 import multiprocessing as mp
+from scipy.ndimage import gaussian_filter1d
+from scipy.signal import find_peaks
 
 # Suppress PINT logging to avoid clutter
 pint.logging.setup(level="WARNING")
 
-# Set up logging for parallel processes
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger()
+
+
+def fit_glitches(psr_name, model, toas, glitch_epochs):
+    try:
+        logging.info(f"Fitting glitches for {psr_name} at epochs: {glitch_epochs}")
+        for i, epoch in enumerate(glitch_epochs, 1):
+            glitch = Glitch()
+            glitch_idx = f"_{i}"
+            # GLEP: Add as MJDParameter (typically not pre-existing)
+            glep_param = MJDParameter(
+                name=f"GLEP{glitch_idx}",
+                value=float(epoch),
+                units="day",
+                description=f"Epoch of glitch {i}",
+                frozen=False,
+                tcb2tdb_scale_factor=1.0
+            )
+            glep_param.index = i
+            glitch.add_param(glep_param)
+            # GLF0: Check if exists, update or add
+            glf0_name = f"GLF0{glitch_idx}"
+            if glf0_name in glitch.params:
+                logging.info(f"{psr_name}: Updating existing {glf0_name}")
+                glitch.GLF0_1.value = 0.0
+                glitch.GLF0_1.frozen = False
+                glitch.GLF0_1.index = i
+            else:
+                glf0_param = floatParameter(
+                    name=glf0_name,
+                    value=0.0,
+                    units="Hz",
+                    description=f"Frequency offset for glitch {i}",
+                    frozen=False,
+                    tcb2tdb_scale_factor=1.0
+                )
+                glf0_param.index = i
+                glitch.add_param(glf0_param)
+            # GLF1: Check if exists, update or add
+            glf1_name = f"GLF1{glitch_idx}"
+            if glf1_name in glitch.params:
+                logging.info(f"{psr_name}: Updating existing {glf1_name}")
+                glitch.GLF1_1.value = 0.0
+                glitch.GLF1_1.frozen = False
+                glitch.GLF1_1.index = i
+            else:
+                glf1_param = floatParameter(
+                    name=glf1_name,
+                    value=0.0,
+                    units="Hz/s",
+                    description=f"Frequency derivative for glitch {i}",
+                    frozen=False,
+                    tcb2tdb_scale_factor=1.0
+                )
+                glf1_param.index = i
+                glitch.add_param(glf1_param)
+            # GLF0D: Check if exists, update or add
+            glf0d_name = f"GLF0D{glitch_idx}"
+            if glf0d_name in glitch.params:
+                logging.info(f"{psr_name}: Updating existing {glf0d_name}")
+                glitch.GLF0D_1.value = 0.0
+                glitch.GLF0D_1.frozen = False
+                glitch.GLF0D_1.index = i
+            else:
+                glf0d_param = floatParameter(
+                    name=glf0d_name,
+                    value=0.0,
+                    units="Hz",
+                    description=f"Decay term for glitch {i}",
+                    frozen=False,
+                    tcb2tdb_scale_factor=1.0
+                )
+                glf0d_param.index = i
+                glitch.add_param(glf0d_param)
+            model.add_component(glitch)
+            logging.info(f"Added Glitch component {i} for {psr_name} with GLEP{glitch_idx}={epoch}")
+        model.validate()
+        fitter = WLSFitter(toas=toas, model=model)
+        fitter.fit_toas()
+        logging.info(f"Completed fitting glitches for {psr_name}")
+        return model, fitter
+    except Exception as e:
+        logging.error(f"Error fitting glitches for {psr_name}: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
+
+
+def detect_glitches(times, residuals, sigma=5, min_separation=100):
+    glitch_epochs = []
+    for i in range(len(residuals)):
+        try:
+            if len(times[i]) != len(residuals[i]):
+                logger.error(f"Pulsar {i+1}: Length mismatch: times={len(times[i])}, residuals={len(residuals[i])}")
+                glitch_epochs.append(np.array([]))
+                continue
+
+            logger.info(f"Pulsar {i+1}: Input times shape={times[i].shape}, dtype={times[i].dtype}, any NaN={np.any(np.isnan(times[i]))}, any inf={np.any(np.isinf(times[i]))}")
+            logger.info(f"Pulsar {i+1}: Input residuals shape={residuals[i].shape}, dtype={residuals[i].dtype}, any NaN={np.any(np.isnan(residuals[i]))}, any inf={np.any(np.isinf(residuals[i]))}")
+
+            times_valid = ~np.isnan(times[i]) & ~np.isinf(times[i])
+            residuals_valid = ~np.isnan(residuals[i]) & ~np.isinf(residuals[i])
+            logger.info(f"Pulsar {i+1}: Times valid shape={times_valid.shape}, dtype={times_valid.dtype}, valid entries={np.sum(times_valid)}")
+            logger.info(f"Pulsar {i+1}: Residuals valid shape={residuals_valid.shape}, dtype={residuals_valid.dtype}, valid entries={np.sum(residuals_valid)}")
+
+            mask = times_valid & residuals_valid
+            logger.info(f"Pulsar {i+1}: Combined mask shape={mask.shape}, dtype={mask.dtype}, valid entries={np.sum(mask)}, expected length={len(times[i])}")
+            
+            if np.sum(mask) < len(times[i]):
+                invalid_indices = np.where(~mask)[0]
+                logger.info(f"Pulsar {i+1}: Invalid entries at indices {invalid_indices}")
+                for idx in invalid_indices:
+                    logger.info(f"Pulsar {i+1}: Index {idx}: time={times[i][idx]}, residual={residuals[i][idx]}")
+
+            if len(mask) != len(times[i]):
+                logger.error(f"Pulsar {i+1}: Mask length mismatch: mask={len(mask)}, times={len(times[i])}")
+                glitch_epochs.append(np.array([]))
+                continue
+
+            t_i = times[i][mask] / 86400.0 + 51544.5
+            r_i = residuals[i][mask].astype(np.float64)
+            logger.info(f"Pulsar {i+1}: After masking, t_i shape={t_i.shape}, r_i shape={r_i.shape}")
+            logger.info(f"Pulsar {i+1}: t_i min={np.min(t_i)}, max={np.max(t_i)}, any NaN={np.any(np.isnan(t_i))}, any inf={np.any(np.isinf(t_i))}")
+            logger.info(f"Pulsar {i+1}: r_i min={np.min(r_i)}, max={np.max(r_i)}, any NaN={np.any(np.isnan(r_i))}, any inf={np.any(np.isinf(r_i))}")
+
+            if len(t_i) < 2:
+                logger.info(f"Pulsar {i+1}: Insufficient data points for glitch detection ({len(t_i)} points).")
+                glitch_epochs.append(np.array([]))
+                continue
+
+            sort_idx = np.argsort(t_i)
+            t_i = t_i[sort_idx]
+            r_i = r_i[sort_idx]
+
+            r_smooth = gaussian_filter1d(r_i, sigma=3)
+
+            dt = np.diff(t_i)
+            dr = np.diff(r_smooth)
+            logger.info(f"Pulsar {i+1}: dt shape={dt.shape}, dr shape={dr.shape}")
+            valid_dt = dt > 1e-6
+            logger.info(f"Pulsar {i+1}: valid_dt shape={valid_dt.shape}, valid entries={np.sum(valid_dt)}")
+            if not np.any(valid_dt):
+                logger.info(f"Pulsar {i+1}: Time differences too small for glitch detection.")
+                glitch_epochs.append(np.array([]))
+                continue
+
+            dr_dt = np.zeros_like(r_smooth)
+            logger.info(f"Pulsar {i+1}: dr_dt shape={dr_dt.shape}, valid_dt shape={valid_dt.shape}, dr shape={dr.shape}, dt shape={dt.shape}")
+            dr_dt[:-1][valid_dt] = dr[valid_dt] / dt[valid_dt]
+            dr_dt[:-1][~valid_dt] = 0
+            dr_dt[-1] = dr_dt[-2] if len(dr_dt) > 1 else 0
+
+            # Compute standard deviation over valid derivatives
+            dr_std = np.std(dr_dt[:-1][valid_dt]) if np.any(valid_dt) else 1.0
+            logger.info(f"Pulsar {i+1}: dr_std={dr_std}")
+            if dr_std == 0:
+                logger.info(f"Pulsar {i+1}: No variation in derivatives for glitch detection.")
+                glitch_epochs.append(np.array([]))
+                continue
+
+            peaks, properties = find_peaks(np.abs(dr_dt), height=sigma * dr_std, distance=min_separation, prominence=dr_std)
+            glitch_mjds = t_i[peaks]
+            if len(glitch_mjds) > 0:
+                amplitudes = np.abs(r_smooth[peaks] - np.mean(r_smooth))
+                significant = amplitudes > 3 * np.std(r_smooth)
+                glitch_mjds = glitch_mjds[significant]
+
+            glitch_epochs.append(glitch_mjds)
+            logger.info(f"Pulsar {i+1}: Detected {len(glitch_mjds)} glitches at MJDs {glitch_mjds}")
+        except Exception as e:
+            logger.error(f"Pulsar {i+1}: Error in glitch detection: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            glitch_epochs.append(np.array([]))
+    return glitch_epochs
+
+
+
+
+# def fit_glitches(psr_name, model, toas, glitch_epochs):
+#     if "Glitch" not in model.components:
+#         model.add_component(Glitch())
+#     if len(glitch_epochs) > 0:
+#         for idx, epoch in enumerate(glitch_epochs, 1):
+#             model[f'GLEP_{idx}'].quantity = epoch * u.day
+#             model[f'GLPH_{idx}'].quantity = 0.0 * u.dimensionless_unscaled
+#             model[f'GLF0_{idx}'].quantity = 0.0 * u.Hz
+#             model[f'GLF1_{idx}'].quantity = 0.0 * u.Hz / u.s
+#             model[f'GLF0_{idx}'].frozen = False
+#             model[f'GLF1_{idx}'].frozen = False
+#     fitter = WLSFitter(toas=toas, model=model)
+#     fitter.fit_toas()
+#     logger.info(f"Fitted glitches for {psr_name}:")
+#     for idx in set(model.components["Glitch"].glitch_indices):
+#         logger.info(f"Glitch {idx}: GLEP={model[f'GLEP_{idx}'].quantity}, "
+#                     f"GLF0={model[f'GLF0_{idx}'].quantity}, "
+#                     f"GLF1={model[f'GLF1_{idx}'].quantity}")
+#     return model, fitter
+
 
 def process_single_pulsar(args, fit_toas=True):
     psr_name, par_file, tim_file = args
     try:
         logging.info(f"Loading data for {psr_name} (par: {par_file}, tim: {tim_file})")
         model = get_model(par_file)
+        #logging.info(f"{psr_name}: Model loaded successfully. Parameters: {[p for p in model.params]}")
+        
         toas = get_TOAs(tim_file, model=model)
-
-        if fit_toas:
-            fitter = WLSFitter(toas=toas, model=model)
-            fitter.fit_toas()
+        logging.info(f"{psr_name}: TOAs loaded successfully. Number of TOAs: {len(toas)}")
+        
+        mjds = np.asarray(toas.get_mjds().value, dtype=np.float64).flatten()
+        logging.info(f"{psr_name}: MJDs shape={mjds.shape}, dtype={mjds.dtype}, any NaN={np.any(np.isnan(mjds))}, any inf={np.any(np.isinf(mjds))}")
+        logging.info(f"{psr_name}: Loaded {len(mjds)} TOAs, MJD range [{mjds.min():.2f}, {mjds.max():.2f}]")
+        
+        if np.any(np.diff(mjds) <= 0):
+            logging.warning(f"Non-monotonic or duplicate MJDs detected for {psr_name}. Sorting TOAs.")
+            toas.table.sort('mjd')
+            mjds = np.asarray(toas.get_mjds().value, dtype=np.float64).flatten()
+            logging.info(f"{psr_name}: After sorting, MJDs shape={mjds.shape}, dtype={mjds.dtype}")
+        
+        flags = toas.table['flags']
+        unique_flags = set()
+        if len(flags) > 0:
+            unique_flags = set([f for flag_dict in flags for f in flag_dict.keys()])
+        logging.info(f"{psr_name}: TOA flags: {unique_flags}")
+        
+        residuals_obj = Residuals(toas=toas, model=model)
+        residuals = np.asarray(residuals_obj.time_resids.to("s").value, dtype=np.float64).flatten()
+        logging.info(f"{psr_name}: Residuals shape={residuals.shape}, dtype={residuals.dtype}, any NaN={np.any(np.isnan(residuals))}, any inf={np.any(np.isinf(residuals))}")
+        logging.info(f"{psr_name}: Residuals computed, length={len(residuals)}, min={np.min(residuals):.2e}, max={np.max(residuals):.2e}")
+        
+        if len(mjds) != len(residuals):
+            logging.error(f"Length mismatch for {psr_name}: mjds={len(mjds)}, residuals={len(residuals)}")
+            return None
+        
+        times = (mjds - mjds[0]) * 86400.0
+        logging.info(f"{psr_name}: Times shape={times.shape}, dtype={times.dtype}, any NaN={np.any(np.isnan(times))}, any inf={np.any(np.isinf(times))}")
+        logging.info(f"{psr_name}: Times computed, length={len(times)}, min={np.min(times):.2e}, max={np.max(times):.2e}")
+        
+        valid_mask = (~np.isnan(mjds) & ~np.isinf(mjds) & 
+                      ~np.isnan(residuals) & ~np.isinf(residuals) & 
+                      ~np.isnan(times) & ~np.isinf(times))
+        logging.info(f"{psr_name}: Valid mask shape={valid_mask.shape}, dtype={valid_mask.dtype}, valid entries={np.sum(valid_mask)}")
+        
+        if not np.any(valid_mask):
+            logging.error(f"No valid TOAs for {psr_name} after filtering NaNs and infs.")
+            return None
+        
+        times = times[valid_mask]
+        residuals = residuals[valid_mask]
+        logging.info(f"{psr_name}: After filtering, times shape={times.shape}, residuals shape={residuals.shape}")
+        
+        if len(times) != len(residuals):
+            logging.error(f"Post-filter length mismatch for {psr_name}: times={len(times)}, residuals={len(residuals)}")
+            return None
+        if len(times) < 2:
+            logging.warning(f"Insufficient data points for {psr_name} after filtering ({len(times)} points). Skipping glitch detection.")
+            glitch_epochs = np.array([])
         else:
-            from pint.residuals import Residuals
-            fitter = WLSFitter(toas=toas, model=model)
-            residuals_obj = Residuals(toas=toas, model=model)
-            fitter.resids = residuals_obj
+            logging.info(f"{psr_name}: First 5 times={times[:5]}, First 5 residuals={residuals[:5]}")
+            logging.info(f"{psr_name}: Times min={np.min(times)}, max={np.max(times)}, any NaN={np.any(np.isnan(times))}, any inf={np.any(np.isinf(times))}")
+            logging.info(f"{psr_name}: Residuals min={np.min(residuals)}, max={np.max(residuals)}, any NaN={np.any(np.isnan(residuals))}, any inf={np.any(np.isinf(residuals))}")
+            times_input = np.array([times])
+            residuals_input = np.array([residuals])
+            logging.info(f"{psr_name}: detect_glitches input shapes: times={times_input.shape}, residuals={residuals_input.shape}")
+            glitch_epochs = detect_glitches(times_input, residuals_input, sigma=5, min_separation=100)[0]
+            logging.info(f"{psr_name}: detect_glitches returned {len(glitch_epochs)} epochs: {glitch_epochs}")
+        
+        # Initialize fitter to ensure it's always defined
+        fitter = None
+        if len(glitch_epochs) > 0:
+            min_mjd = mjds.min()
+            max_mjd = mjds.max()
+            valid_epochs = [epoch for epoch in glitch_epochs if min_mjd <= epoch <= max_mjd]
+            logging.info(f"{psr_name}: Valid glitch epochs: {valid_epochs}")
+            if not valid_epochs:
+                logging.warning(f"No valid glitch epochs for {psr_name} within MJD range [{min_mjd}, {max_mjd}].")
+                try:
+                    fitter = WLSFitter(toas=toas, model=model)
+                    if fit_toas:
+                        fitter.fit_toas()
+                        logging.info(f"{psr_name}: Fitted without glitches (no valid epochs).")
+                    else:
+                        residuals_obj = Residuals(toas=toas, model=model)
+                        fitter.resids = residuals_obj
+                        logging.info(f"{psr_name}: Computed residuals without fitting (no valid epochs).")
+                except Exception as e:
+                    logging.error(f"Error fitting without glitches for {psr_name}: {e}")
+                    import traceback
+                    logging.error(f"Traceback: {traceback.format_exc()}")
+                    return None
+            else:
+                try:
+                    model, fitter = fit_glitches(psr_name, model, toas, valid_epochs)
+                    logging.info(f"{psr_name}: Successfully fitted glitches.")
+                except Exception as e:
+                    logging.error(f"Error fitting glitches for {psr_name}: {e}")
+                    import traceback
+                    logging.error(f"Traceback: {traceback.format_exc()}")
+                    return None
+        else:
+            logging.info(f"No glitches detected for {psr_name}, fitting without glitches.")
+            try:
+                fitter = WLSFitter(toas=toas, model=model)
+                if fit_toas:
+                    fitter.fit_toas()
+                    logging.info(f"{psr_name}: Fitted without glitches.")
+                else:
+                    residuals_obj = Residuals(toas=toas, model=model)
+                    fitter.resids = residuals_obj
+                    logging.info(f"{psr_name}: Computed residuals without fitting.")
+            except Exception as e:
+                logging.error(f"Error fitting without glitches for {psr_name}: {e}")
+                import traceback
+                logging.error(f"Traceback: {traceback.format_exc()}")
+                return None
+        
+        if fitter is None:
+            logging.error(f"No fitter defined for {psr_name}. Cannot compute residuals.")
+            return None
 
-        logging.info(f"Model components for {psr_name}: {fitter.model.components.keys()}")
-        logging.info(f"Astrometry parameters: {fitter.model.get_params_of_type('astrometry')}")
-
-        mjds = toas.get_mjds().value
+        mjds = np.asarray(toas.get_mjds().value, dtype=np.float64).flatten()
         mjds_sorted = np.sort(mjds)
         times_i = (mjds - mjds_sorted[0]) * 86400.0
         obs_span = (mjds_sorted[-1] - mjds_sorted[0]) * 86400.0
-
-        residuals_i = fitter.resids.time_resids.to("s").value
-        uncertainties_i = toas.get_errors().to("s").value
-
-        if "AstrometryEquatorial" in fitter.model.components:
-            logging.info(f"Using AstrometryEquatorial for {psr_name}")
-            ra = fitter.model.RAJ.quantity.to("rad").value
-            dec = fitter.model.DECJ.quantity.to("rad").value
-        elif "AstrometryEcliptic" in fitter.model.components:
-            logging.info(f"Using AstrometryEcliptic for {psr_name}")
-            elong = fitter.model.ELONG.value
-            elat = fitter.model.ELAT.value
-            elong = elong * u.deg
-            elat = elat * u.deg
-            coord = SkyCoord(lon=elong, lat=elat, frame='barycentrictrueecliptic')
-            equatorial = coord.transform_to('icrs')
-            ra = equatorial.ra.to('rad').value
-            dec = equatorial.dec.to('rad').value
-            logging.info(f"Converted RA, Dec for {psr_name}: {ra} rad, {dec} rad")
+        residuals_i = np.asarray(fitter.resids.time_resids.to("s").value, dtype=np.float64).flatten()
+        uncertainties_i = np.asarray(toas.get_errors().to("s").value, dtype=np.float64).flatten()
+        
+        if len(times_i) != len(residuals_i) or len(times_i) != len(uncertainties_i):
+            logging.error(f"Final output length mismatch for {psr_name}: times={len(times_i)}, residuals={len(residuals_i)}, uncertainties={len(uncertainties_i)}")
+            return None
+        
+        if hasattr(model, 'RAJ') and hasattr(model, 'DECJ'):
+            coord = SkyCoord(model.RAJ.quantity, model.DECJ.quantity, frame='icrs')
+        elif hasattr(model, 'ELONG') and hasattr(model, 'ELAT'):
+            coord = SkyCoord(model.ELONG.quantity, model.ELAT.quantity, frame='barycentrictrueecliptic').transform_to('icrs')
         else:
-            raise ValueError(f"No recognized astrometry component for {psr_name}.")
-
-        efac_param = getattr(fitter.model, "EFAC1", None)
-        efac = efac_param.value if efac_param is not None else 1.0
-        equad_param = getattr(fitter.model, "EQUAD1", None)
-        equad = equad_param.value if equad_param is not None else 0.0
-        mean_uncertainty = np.mean(uncertainties_i)
-        noise_level = efac * mean_uncertainty + equad
-        logging.info(f"Noise level components for {psr_name}: EFAC={efac}, EQUAD={equad}, Mean Uncertainty={mean_uncertainty:.2e} s, Noise Level={noise_level:.2e} s")
-
+            logging.error(f"{psr_name}: Neither RAJ/DECJ nor ELONG/ELAT found in model parameters.")
+            return None
+        position = np.array([coord.ra.rad, coord.dec.rad])
+        noise_level = np.std(residuals_i)
+        
         return {
             "name": psr_name,
             "times": times_i,
             "residuals": residuals_i,
             "uncertainties": uncertainties_i,
-            "position": (ra, dec),
+            "position": position,
             "obs_span": obs_span,
             "noise_level": noise_level
         }
     except Exception as e:
         logging.error(f"Error loading data for {psr_name}: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
         return None
+
+    
+
+
 
 def load_pulsar_data(data_dir, n_pulsars=20, use_wideband=False, n_jobs=None, fit_toas=True, cache_file="pulsar_data_cache.pkl"):
     if os.path.exists(cache_file):
-        print(f"Loading cached data from {cache_file}...")
-        with open(cache_file, 'rb') as f:
-            cached_data = pickle.load(f)
-        return cached_data["times"], cached_data["residuals"], cached_data["uncertainties"], cached_data["positions"]
+        logging.info(f"Loading cached data from {cache_file}...")
+        try:
+            with open(cache_file, 'rb') as f:
+                cached_data = pickle.load(f)
+            return cached_data["times"], cached_data["residuals"], cached_data["uncertainties"], cached_data["positions"]
+        except Exception as e:
+            logging.warning(f"Failed to load cache file {cache_file}: {e}. Regenerating data...")
 
     data_type = "wideband" if use_wideband else "narrowband"
     data_path = os.path.join(data_dir, data_type)
@@ -145,8 +448,11 @@ def load_pulsar_data(data_dir, n_pulsars=20, use_wideband=False, n_jobs=None, fi
         pulsar_data = pool.map(process_func, pulsar_files[:n_pulsars])
 
     pulsar_data = [p for p in pulsar_data if p is not None]
-
+    failed_count = n_pulsars - len(pulsar_data)
+    if failed_count > 0:
+        logging.warning(f"Failed to process {failed_count} out of {n_pulsars} pulsars.")
     if len(pulsar_data) < n_pulsars:
+        logging.error(f"Successfully loaded only {len(pulsar_data)} pulsars, but {n_pulsars} are requested.")
         raise ValueError(f"Successfully loaded only {len(pulsar_data)} pulsars, but {n_pulsars} are requested.")
 
     pulsar_data.sort(key=lambda x: (-x["obs_span"], x["noise_level"]))
@@ -164,13 +470,13 @@ def load_pulsar_data(data_dir, n_pulsars=20, use_wideband=False, n_jobs=None, fi
 
     # Convert to arrays, padding with NaNs for irregular lengths
     max_n_times = max(len(t) for t in times_list)
-    times = np.full((n_pulsars, max_n_times), np.nan)  # Pad times
+    times = np.full((n_pulsars, max_n_times), np.nan)
     residuals = np.full((n_pulsars, max_n_times), np.nan)
     uncertainties = np.full((n_pulsars, max_n_times), np.nan)
 
     for i in range(n_pulsars):
         n_times_i = len(times_list[i])
-        times[i, :n_times_i] = times_list[i]  # Pad times
+        times[i, :n_times_i] = times_list[i]
         residuals[i, :n_times_i] = residuals_list[i]
         uncertainties[i, :n_times_i] = uncertainties_list[i]
 
@@ -178,7 +484,7 @@ def load_pulsar_data(data_dir, n_pulsars=20, use_wideband=False, n_jobs=None, fi
 
     # Cache the results
     cache_data = {
-        "times": times,  # Now a padded numpy array
+        "times": times,
         "residuals": residuals,
         "uncertainties": uncertainties,
         "positions": positions
@@ -193,6 +499,8 @@ def load_pulsar_data(data_dir, n_pulsars=20, use_wideband=False, n_jobs=None, fi
               f"Noise Level: {pulsar['noise_level']:.2e} s")
 
     return times, residuals, uncertainties, positions
+
+
 
 def interpolate_residuals(times, residuals, uncertainties, N_times):
     n_pulsars = residuals.shape[0]

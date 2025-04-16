@@ -21,15 +21,48 @@ F_YR = 1 / (365.25 * 86400)
 # Load the data
 data_dir = "/home/wesley/data"
 cache_file = "pulsar_data_cache.pkl"
+# After loading data
 times, residuals, uncertainties, positions = load_pulsar_data(
-    data_dir, n_pulsars=N_PULSARS, fit_toas=False, cache_file=cache_file
+    data_dir, n_pulsars=N_PULSARS, fit_toas=True, cache_file=cache_file,
 )
 
-print(f"Number of pulsars: {positions.shape[0]}")
-print(f"times shape: {times.shape}")
-print(f"residuals shape: {residuals.shape}")
-print(f"uncertainties shape: {uncertainties.shape}")
-print(f"positions shape: {positions.shape}")
+# Plot pre-glitch residuals
+plt.figure(figsize=(12, 8))
+for i in range(min(3, N_PULSARS)):
+    plt.subplot(3, 1, i+1)
+    plt.plot(times[i] / (365.25 * 86400), residuals[i], label=f"Pulsar {i+1} Pre-Glitch")
+    plt.xlabel("Time (yr)")
+    plt.ylabel("Residual (s)")
+    plt.legend()
+plt.tight_layout()
+plt.savefig("pulsar_pre_glitch_residuals.png")
+plt.close()
+
+# Proceed with interpolation and GWB fitting
+times, residuals, uncertainties = interpolate_residuals(times, residuals, uncertainties, N_TIMES)
+
+# Plot post-glitch residuals
+plt.figure(figsize=(12, 8))
+for i in range(min(3, N_PULSARS)):
+    plt.subplot(3, 1, i+1)
+    plt.plot(times[i] / (365.25 * 86400), residuals[i], label=f"Pulsar {i+1} Post-Glitch")
+    plt.xlabel("Time (yr)")
+    plt.ylabel("Residual (s)")
+    plt.legend()
+plt.tight_layout()
+plt.savefig("pulsar_post_glitch_residuals.png")
+plt.close()
+
+
+
+
+
+
+print(f"Number of pulsars: {len(positions)}")
+print(f"times shape: {len(times)}")
+print(f"residuals shape: {len(residuals)}")
+print(f"uncertainties shape: {len(uncertainties)}")
+print(f"positions shape: {len(positions)}")
 
 # Log residuals stats
 logger.info(f"Residuals mean: {np.nanmean(residuals, axis=1)[:3]}")
@@ -98,8 +131,8 @@ for _ in range(N_PULSARS):
     bounds.append((0.1, 3.0))
 
 # Initialize population
-NPs=100
-maxiters = 200
+NPs=50
+maxiters = 5
 initpop = initial_population(bounds,NP=NPs)
 # Transpose to match expected shape (n_pop, n_params)
 initpop = initpop.T
